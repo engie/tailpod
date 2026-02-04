@@ -1,0 +1,7 @@
+variant: fcos
+version: 1.6.0
+passwd:
+  users:
+    - name: core
+      ssh_authorized_keys:
+        - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDIUpL6VbZH1vgF3ICnaJrx5kGdL3+/zeWqcYgBGZ654 steve@secomputing.co.uk
