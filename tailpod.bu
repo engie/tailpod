@@ -3,6 +3,12 @@ version: 1.6.0
 
 storage:
   directories:
+    - path: /home/core/.config
+      user: { name: core }
+      group: { name: core }
+    - path: /home/core/.config/containers
+      user: { name: core }
+      group: { name: core }
     - path: /home/core/.config/containers/systemd
       user: { name: core }
       group: { name: core }
@@ -52,7 +58,7 @@ storage:
           # Mint a fresh ephemeral Tailscale auth key for this container
           ExecStartPre=/usr/local/bin/mint-ts-authkey.sh \
             -c /home/core/.config/tailscale/keymint.env \
-            -t tag:container-%N \
+            -t tag:tailpod \
             -o %t/ts-authkeys/%N.env \
             -h %N
 
