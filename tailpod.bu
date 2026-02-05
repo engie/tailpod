@@ -1,6 +1,14 @@
 variant: fcos
 version: 1.6.0
 
+passwd:
+  groups:
+    - name: cusers
+  users:
+    - name: core
+      groups:
+        - cusers
+
 storage:
   directories:
     - path: /home/core/.config
@@ -12,10 +20,10 @@ storage:
     - path: /home/core/.config/containers/systemd
       user: { name: core }
       group: { name: core }
-    - path: /home/core/.config/tailscale
-      mode: 0700
-      user: { name: core }
-      group: { name: core }
+    - path: /etc/quadlet-deploy
+    - path: /etc/quadlet-deploy/transforms
+    - path: /etc/tailscale
+    - path: /var/lib/quadlet-deploy
 
   files:
     # ts4nsnet binary — tailnet networking for rootless containers
@@ -26,53 +34,35 @@ storage:
         verification:
           hash: sha256-b85a461798dd95e3c6befc9444401e1bfec1701c7ad223f8e770405d9652f40e
 
-    # Auth key minting script (inlined from mint-ts-authkey.sh at build time)
-    - path: /usr/local/bin/mint-ts-authkey.sh
+    # quadlet-deploy binary — git-sync + transform merge deployer
+    - path: /usr/local/bin/quadlet-deploy
       mode: 0755
       contents:
-        local: mint-ts-authkey.sh
+        local: quadlet-deploy.bin
 
-    # Example quadlet: nginx on the tailnet
-    - path: /home/core/.config/containers/systemd/nginx-demo.container
+    # tailpod-mint-key binary — Tailscale auth key minter
+    - path: /usr/local/bin/tailpod-mint-key
+      mode: 0755
+      contents:
+        local: tailpod-mint-key.bin
+
+    # quadlet-deploy config
+    - path: /etc/quadlet-deploy/config.env
       mode: 0644
-      user: { name: core }
-      group: { name: core }
       contents:
         inline: |
-          [Unit]
-          Description=nginx-demo tailpod
-          After=network-online.target
+          QDEPLOY_GIT_URL=git@github.com:user/container-defs.git
+          QDEPLOY_GIT_BRANCH=main
+          QDEPLOY_TRANSFORM_DIR=/etc/quadlet-deploy/transforms
+          QDEPLOY_STATE_DIR=/var/lib/quadlet-deploy
+          QDEPLOY_USER_GROUP=cusers
 
-          [Container]
-          Image=docker.io/library/nginx:latest
-          ContainerName=nginx-demo
-
-          # ts4nsnet replaces slirp4netns — routes all traffic through tailnet
-          Network=slirp4netns
-          PodmanArgs=--network-cmd-path=/usr/local/bin/ts4nsnet --dns=100.100.100.100
-
-          [Service]
-          # Create runtime dir for minted auth keys
-          ExecStartPre=mkdir -p %t/ts-authkeys
-
-          # Mint a fresh ephemeral Tailscale auth key for this container
-          ExecStartPre=/usr/local/bin/mint-ts-authkey.sh \
-            -c /home/core/.config/tailscale/keymint.env \
-            -t tag:tailpod \
-            -o %t/ts-authkeys/%N.env \
-            -h %N
-
-          # Load minted key into service environment (dash = skip if missing on first read)
-          EnvironmentFile=-%t/ts-authkeys/%N.env
-
-          # Uncomment to give this container internet access via a Tailscale exit node:
-          # Environment=TS_EXIT_NODE=100.x.y.z
-
-          Restart=on-failure
-          RestartSec=10s
-
-          [Install]
-          WantedBy=default.target
+    # Allow managed container users to run tailpod-mint-key as root
+    - path: /etc/sudoers.d/tailpod-mint-key
+      mode: 0440
+      contents:
+        inline: |
+          %cusers ALL=(root) NOPASSWD: /usr/local/bin/tailpod-mint-key
 
 systemd:
   units:
@@ -91,3 +81,30 @@ systemd:
 
         [Install]
         WantedBy=multi-user.target
+
+    # Sync container definitions from git
+    - name: quadlet-deploy-sync.service
+      contents: |
+        [Unit]
+        Description=Sync Quadlet container definitions from git
+        After=network-online.target
+        Wants=network-online.target
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/local/bin/quadlet-deploy sync
+        Environment=GIT_SSH_COMMAND=ssh -i /etc/quadlet-deploy/deploy-key -o StrictHostKeyChecking=accept-new
+
+    # Timer to poll for container definition changes
+    - name: quadlet-deploy-sync.timer
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Poll for container definition changes
+
+        [Timer]
+        OnBootSec=30s
+        OnUnitActiveSec=2min
+
+        [Install]
+        WantedBy=timers.target

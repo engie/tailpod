@@ -7,14 +7,23 @@ if [[ ! -f secrets.bu ]]; then
   exit 1
 fi
 
+# Build Go binaries for FCOS (linux/arm64)
+echo "Building quadlet-deploy..."
+(cd quadlet-deploy && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o ../quadlet-deploy.bin .)
+echo "Building tailpod-mint-key..."
+(cd tailpod-mint-key && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o ../tailpod-mint-key.bin .)
+
 # Transpile both butane files to ignition
 BASE_IGN=$(butane --strict --files-dir=. tailpod.bu)
 SECRETS_IGN=$(butane --strict secrets.bu)
 
-# Merge: append secrets (files + passwd) into base ignition
+# Merge: combine secrets into base ignition, merging users by name
 echo "$BASE_IGN" | jq --argjson s "$SECRETS_IGN" '
   .storage.files += ($s.storage.files // [])
-  | .passwd = (.passwd // {}) | .passwd.users = ((.passwd.users // []) + ($s.passwd.users // []))
+  | .passwd = (.passwd // {})
+  | .passwd.users = (
+      [(.passwd.users // []) + ($s.passwd.users // []) | group_by(.name)[] | add]
+    )
 ' > tailpod.ign
 
 echo "Generated tailpod.ign"

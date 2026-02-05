@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verification plan for tailpod: FCOS + rootless Podman + ts4nsnet
+# Verification plan for tailpod: FCOS + rootless Podman + quadlet-deploy + ts4nsnet
 # Run these commands after booting with the generated ignition.
 #
 # Usage: ssh into the FCOS host as core, or run remotely with:
@@ -16,7 +16,7 @@ echo
 
 # 1. Check binaries deployed
 echo "1. Binaries"
-for f in /usr/local/bin/ts4nsnet /usr/local/bin/mint-ts-authkey.sh; do
+for f in /usr/local/bin/ts4nsnet /usr/local/bin/quadlet-deploy /usr/local/bin/tailpod-mint-key; do
   if [[ -x "$f" ]]; then pass "$f exists and is executable"
   else fail "$f missing or not executable"; fi
 done
@@ -31,78 +31,96 @@ else
 fi
 echo
 
-# 3. Check credentials present
+# 3. Check OAuth credentials present
 echo "3. Credentials"
-if [[ -f ~/.config/tailscale/keymint.env ]]; then
-  pass "keymint.env exists"
+if [[ -f /etc/tailscale/oauth.env ]]; then
+  pass "oauth.env exists"
 else
-  fail "keymint.env not found"
+  fail "oauth.env not found"
 fi
 echo
 
-# 4. Check containers.conf has dns search
-echo "4. containers.conf"
-if grep -q 'dns_searches' ~/.config/containers/containers.conf 2>/dev/null; then
-  pass "dns_searches configured"
-  grep 'dns_searches' ~/.config/containers/containers.conf
+# 4. Check quadlet-deploy config
+echo "4. quadlet-deploy config"
+if [[ -f /etc/quadlet-deploy/config.env ]]; then
+  pass "config.env exists"
 else
-  fail "containers.conf missing or no dns_searches"
+  fail "config.env not found"
+fi
+if [[ -d /etc/quadlet-deploy/transforms ]]; then
+  pass "transforms directory exists"
+else
+  fail "transforms directory not found"
 fi
 echo
 
-# 5. Check quadlet unit generated
-echo "5. Quadlet"
-if systemctl --user list-unit-files 2>/dev/null | grep -q nginx-demo; then
-  pass "nginx-demo unit found"
+# 5. Check tailscale transform
+echo "5. Tailscale transform"
+if [[ -f /etc/quadlet-deploy/transforms/tailscale.container ]]; then
+  pass "tailscale.container transform exists"
+  if grep -q 'ts4nsnet' /etc/quadlet-deploy/transforms/tailscale.container 2>/dev/null; then
+    pass "transform references ts4nsnet"
+  else
+    fail "transform does not reference ts4nsnet"
+  fi
 else
-  fail "nginx-demo unit not found"
+  fail "tailscale.container transform not found"
 fi
 echo
 
-# 6. Test auth key minting (optional — requires valid OAuth creds)
-echo "6. Auth key minting (dry run)"
-if mint-ts-authkey.sh -c ~/.config/tailscale/keymint.env -t tag:container-nginx-demo --print 2>/dev/null; then
-  pass "Auth key minted successfully"
+# 6. Check deploy key
+echo "6. Deploy key"
+if [[ -f /etc/quadlet-deploy/deploy-key ]]; then
+  pass "deploy-key exists"
+  perms=$(stat -c '%a' /etc/quadlet-deploy/deploy-key 2>/dev/null || stat -f '%Lp' /etc/quadlet-deploy/deploy-key)
+  if [[ "$perms" == "600" ]]; then
+    pass "deploy-key has mode 0600"
+  else
+    fail "deploy-key has mode $perms (expected 0600)"
+  fi
 else
-  fail "Auth key minting failed (check OAuth credentials)"
+  fail "deploy-key not found"
 fi
 echo
 
-# 7. Start the container
-echo "7. Start nginx-demo"
-if systemctl --user start nginx-demo 2>/dev/null; then
-  pass "nginx-demo started"
-  sleep 5
+# 7. Check sudoers
+echo "7. Sudoers"
+if sudo test -f /etc/sudoers.d/tailpod-mint-key; then
+  pass "sudoers file exists"
 else
-  fail "nginx-demo failed to start"
+  fail "sudoers file not found"
 fi
 echo
 
-# 8. Check it joined tailnet
-echo "8. Tailnet membership"
-if podman exec nginx-demo nslookup nginx-demo 100.100.100.100 &>/dev/null; then
-  pass "nginx-demo resolvable via MagicDNS"
+# 8. Check sync timer
+echo "8. Sync timer"
+if systemctl is-enabled quadlet-deploy-sync.timer &>/dev/null; then
+  pass "quadlet-deploy-sync.timer is enabled"
 else
-  fail "nginx-demo not resolvable via MagicDNS (may need more time)"
+  fail "quadlet-deploy-sync.timer not enabled"
 fi
 echo
 
-# 9. Verify DNS resolution inside container
-echo "9. DNS search domain"
-if podman exec nginx-demo cat /etc/resolv.conf 2>/dev/null | grep -q 'search'; then
-  pass "search domain present in container resolv.conf"
-  podman exec nginx-demo grep 'search' /etc/resolv.conf
+# 9. Check cusers group
+echo "9. cusers group"
+if getent group cusers &>/dev/null; then
+  pass "cusers group exists"
 else
-  fail "no search domain in container resolv.conf"
+  fail "cusers group not found"
+fi
+if id -nG core 2>/dev/null | grep -qw cusers; then
+  pass "core is in cusers group"
+else
+  fail "core is not in cusers group"
 fi
 echo
 
-# 10. Verify no internet access (expect failure)
-echo "10. Internet isolation"
-if podman exec nginx-demo curl -m5 https://google.com &>/dev/null; then
-  fail "Container has internet access (expected isolation)"
+# 10. Test quadlet-deploy check (if repo has been cloned)
+echo "10. quadlet-deploy"
+if sudo quadlet-deploy sync 2>&1 | head -5; then
+  pass "quadlet-deploy sync ran (check output above)"
 else
-  pass "No internet access (as expected)"
+  fail "quadlet-deploy sync failed (may need deploy key or network)"
 fi
 echo
 
