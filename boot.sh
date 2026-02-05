@@ -12,5 +12,4 @@ vfkit \
   --device virtio-input,keyboard \
   --device virtio-input,pointing \
   --device virtio-gpu,width=800,height=600 \
-  --gui \
   --ignition tailpod.ign
