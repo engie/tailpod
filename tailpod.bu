@@ -1,0 +1,87 @@
+variant: fcos
+version: 1.6.0
+
+storage:
+  directories:
+    - path: /home/core/.config/containers/systemd
+      user: { name: core }
+      group: { name: core }
+    - path: /home/core/.config/tailscale
+      mode: 0700
+      user: { name: core }
+      group: { name: core }
+
+  files:
+    # ts4nsnet binary — tailnet networking for rootless containers
+    - path: /usr/local/bin/ts4nsnet
+      mode: 0755
+      contents:
+        source: https://github.com/engie/ts4nsnet/releases/download/v0.1/ts4nsnet-linux-arm64
+        verification:
+          hash: sha256-b85a461798dd95e3c6befc9444401e1bfec1701c7ad223f8e770405d9652f40e
+
+    # Auth key minting script (inlined from mint-ts-authkey.sh at build time)
+    - path: /usr/local/bin/mint-ts-authkey.sh
+      mode: 0755
+      contents:
+        local: mint-ts-authkey.sh
+
+    # Example quadlet: nginx on the tailnet
+    - path: /home/core/.config/containers/systemd/nginx-demo.container
+      mode: 0644
+      user: { name: core }
+      group: { name: core }
+      contents:
+        inline: |
+          [Unit]
+          Description=nginx-demo tailpod
+          After=network-online.target
+
+          [Container]
+          Image=docker.io/library/nginx:latest
+          ContainerName=nginx-demo
+
+          # ts4nsnet replaces slirp4netns — routes all traffic through tailnet
+          Network=slirp4netns
+          PodmanArgs=--network-cmd-path=/usr/local/bin/ts4nsnet --dns=100.100.100.100
+
+          [Service]
+          # Create runtime dir for minted auth keys
+          ExecStartPre=mkdir -p %t/ts-authkeys
+
+          # Mint a fresh ephemeral Tailscale auth key for this container
+          ExecStartPre=/usr/local/bin/mint-ts-authkey.sh \
+            -c /home/core/.config/tailscale/keymint.env \
+            -t tag:container-%N \
+            -o %t/ts-authkeys/%N.env \
+            -h %N
+
+          # Load minted key into service environment (dash = skip if missing on first read)
+          EnvironmentFile=-%t/ts-authkeys/%N.env
+
+          # Uncomment to give this container internet access via a Tailscale exit node:
+          # Environment=TS_EXIT_NODE=100.x.y.z
+
+          Restart=on-failure
+          RestartSec=10s
+
+          [Install]
+          WantedBy=default.target
+
+systemd:
+  units:
+    # Enable lingering so rootless user services start at boot
+    - name: enable-linger-core.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Enable lingering for core user
+        After=systemd-logind.service
+        ConditionPathExists=!/var/lib/systemd/linger/core
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/bin/loginctl enable-linger core
+
+        [Install]
+        WantedBy=multi-user.target
