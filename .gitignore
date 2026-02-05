@@ -1,4 +1,5 @@
 secrets.bu
 *.ign
 *.raw
+*.raw.orig
 efi-variable-store
