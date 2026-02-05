@@ -4,10 +4,6 @@ version: 1.6.0
 passwd:
   groups:
     - name: cusers
-  users:
-    - name: core
-      groups:
-        - cusers
 
 storage:
   directories:
@@ -51,7 +47,7 @@ storage:
       mode: 0644
       contents:
         inline: |
-          QDEPLOY_GIT_URL=git@github.com:user/container-defs.git
+          QDEPLOY_GIT_URL=git@github.com:engie/containers.git
           QDEPLOY_GIT_BRANCH=main
           QDEPLOY_TRANSFORM_DIR=/etc/quadlet-deploy/transforms
           QDEPLOY_STATE_DIR=/var/lib/quadlet-deploy
@@ -93,7 +89,7 @@ systemd:
         [Service]
         Type=oneshot
         ExecStart=/usr/local/bin/quadlet-deploy sync
-        Environment=GIT_SSH_COMMAND=ssh -i /etc/quadlet-deploy/deploy-key -o StrictHostKeyChecking=accept-new
+        Environment="GIT_SSH_COMMAND=ssh -i /etc/quadlet-deploy/deploy-key -o StrictHostKeyChecking=accept-new"
 
     # Timer to poll for container definition changes
     - name: quadlet-deploy-sync.timer

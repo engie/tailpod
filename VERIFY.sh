@@ -108,16 +108,16 @@ if getent group cusers &>/dev/null; then
 else
   fail "cusers group not found"
 fi
-if id -nG core 2>/dev/null | grep -qw cusers; then
-  pass "core is in cusers group"
+if ! id -nG core 2>/dev/null | grep -qw cusers; then
+  pass "core is not in cusers group (only container users should be)"
 else
-  fail "core is not in cusers group"
+  fail "core should not be in cusers group"
 fi
 echo
 
 # 10. Test quadlet-deploy check (if repo has been cloned)
 echo "10. quadlet-deploy"
-if sudo quadlet-deploy sync 2>&1 | head -5; then
+if sudo GIT_SSH_COMMAND='ssh -i /etc/quadlet-deploy/deploy-key -o StrictHostKeyChecking=accept-new' quadlet-deploy sync 2>&1 | head -5; then
   pass "quadlet-deploy sync ran (check output above)"
 else
   fail "quadlet-deploy sync failed (may need deploy key or network)"

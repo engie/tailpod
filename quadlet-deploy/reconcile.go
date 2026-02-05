@@ -88,13 +88,11 @@ func Sync(config Config) error {
 		if err != nil {
 			return fmt.Errorf("git fetch: %w", err)
 		}
-		if !changed {
-			log.Printf("no changes")
-			return nil
-		}
-		log.Printf("changes detected, updating")
-		if err := gitResetHard(config.RepoPath, config.GitBranch); err != nil {
-			return fmt.Errorf("git reset: %w", err)
+		if changed {
+			log.Printf("changes detected, updating")
+			if err := gitResetHard(config.RepoPath, config.GitBranch); err != nil {
+				return fmt.Errorf("git reset: %w", err)
+			}
 		}
 	}
 
@@ -143,6 +141,10 @@ func Sync(config Config) error {
 		log.Printf("%s: deploying", name)
 		if err := writeQuadlet(name, name, content); err != nil {
 			log.Printf("error writing quadlet for %s: %v", name, err)
+			continue
+		}
+		if err := waitForUserManager(name); err != nil {
+			log.Printf("error waiting for user manager %s: %v", name, err)
 			continue
 		}
 		if err := daemonReload(name); err != nil {

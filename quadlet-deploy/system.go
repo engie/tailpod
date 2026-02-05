@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // run executes a command and returns combined output.
@@ -62,9 +63,10 @@ func gitResetHard(repoDir, branch string) error {
 	return nil
 }
 
-// createUser creates a system user in the given group.
+// createUser creates a user in the given group. Uses a regular (non-system)
+// user so that useradd auto-allocates subuid/subgid ranges for rootless Podman.
 func createUser(name, group string) error {
-	_, err := run("useradd", "--system", "--create-home", "-s", "/sbin/nologin", "-G", group, name)
+	_, err := run("useradd", "--create-home", "-s", "/sbin/nologin", "-G", group, name)
 	if err != nil {
 		return fmt.Errorf("creating user %s: %w", name, err)
 	}
@@ -73,6 +75,19 @@ func createUser(name, group string) error {
 		return fmt.Errorf("enabling linger for %s: %w", name, err)
 	}
 	return nil
+}
+
+// waitForUserManager waits until a user's systemd instance is ready.
+func waitForUserManager(name string) error {
+	for i := 0; i < 30; i++ {
+		out, _ := run("systemctl", "--user", "-M", name+"@", "is-system-running")
+		state := strings.TrimSpace(out)
+		if state == "running" || state == "degraded" {
+			return nil
+		}
+		time.Sleep(time.Second)
+	}
+	return fmt.Errorf("timeout waiting for user manager for %s", name)
 }
 
 // deleteUser stops services and removes a user.
@@ -103,6 +118,11 @@ func writeQuadlet(username, containerName, content string) error {
 	dir := filepath.Join(home, ".config", "containers", "systemd")
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("creating quadlet dir: %w", err)
+	}
+	// chown the entire .config tree to the user — Podman refuses to run
+	// if any parent directory is not owned by the container user.
+	if _, err := run("chown", "-R", username+":"+username, filepath.Join(home, ".config")); err != nil {
+		return fmt.Errorf("chowning .config for %s: %w", username, err)
 	}
 	path := filepath.Join(dir, containerName+".container")
 	return os.WriteFile(path, []byte(content), 0644)
