@@ -64,9 +64,30 @@ Transform files are `.container` INI files in `/etc/quadlet-deploy/transforms/`.
 - `Key=Value` — set only if the spec hasn't set this key (user takes precedence)
 - `+Key=Value` — prepend before the spec's values (for multi-value keys like ExecStartPre)
 
+## Container Definitions Repo
+
+Container specs live in a separate git repo (`git@github.com:engie/containers.git`). To add a container on the tailnet, add a `.container` file under `tailscale/`:
+
+```ini
+# tailscale/my-app.container
+[Unit]
+Description=my-app tailpod
+
+[Container]
+Image=docker.io/library/nginx:latest
+ContainerName=my-app
+```
+
+The tailscale transform handles all networking, auth key minting, and service lifecycle automatically.
+
 ## Common Pitfalls
 
-- **Directory ownership:** All directories under `~core/.config/` must be owned by `core:core` in the butane config. Ignition creates intermediate directories as root, and Podman refuses to run if its config path has root-owned parents.
+- **Directory ownership:** All directories under `~<user>/.config/` must be owned by that user. Ignition and `os.MkdirAll` (in quadlet-deploy) create directories as root. Podman refuses to run if its config path has root-owned parents. `writeQuadlet` chowns `.config` after creating dirs.
+- **Ignition duplicate users:** The jq merge in `build.sh` must merge `passwd.users` by name (`group_by(.name)[] | add`), not concatenate arrays. Duplicate user entries cause Ignition to fail silently — the VM boots but never reaches a shell.
+- **systemd Environment= quoting:** Values with spaces must be quoted: `Environment="GIT_SSH_COMMAND=ssh -i /path -o Opt=val"`. Without quotes, systemd splits on spaces and only sets the first word.
+- **Regular users, not system users:** Container users must be created without `--system` so that `useradd` auto-allocates subuid/subgid ranges. Without these, rootless Podman fails with "insufficient UIDs or GIDs available in user namespace".
+- **User manager startup delay:** After `useradd` + `loginctl enable-linger`, the user's systemd instance takes time to start (can exceed 30s on first boot). `quadlet-deploy` waits for it, but if it times out the deploy retries on the next sync cycle.
+- **cusers group membership:** Only container users should be in `cusers`. Adding `core` causes `quadlet-deploy` to treat it as a managed container and attempt to delete it during cleanup.
 - **OAuth tag scope:** The tag in `-tag tag:...` passed to `tailpod-mint-key` must match what the Tailscale OAuth client is authorized for. A mismatch gives HTTP 400 from the Tailscale API.
 - **Transform in secrets.bu:** The tailscale transform contains the tailnet domain in `--dns-search`. It's provisioned via `secrets.bu`, not `tailpod.bu`.
 
