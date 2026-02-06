@@ -36,7 +36,7 @@ storage:
       contents:
         source: https://github.com/engie/quadsync/releases/download/v0.1/quadsync-linux-arm64
         verification:
-          hash: sha256-df03b901c88962fa004cb363fb8815b1a796e632e25e363251afe9473db91818
+          hash: sha256-0153cf9b4db26929d45e4f16bfcc995fab41df5b222c0b630753adc182ce2a2d
 
     # tailmint binary — Tailscale auth key minter
     - path: /usr/local/bin/tailmint
@@ -44,7 +44,7 @@ storage:
       contents:
         source: https://github.com/engie/tailmint/releases/download/v0.1/tailmint-linux-arm64
         verification:
-          hash: sha256-a6d3f193e42c13353f03a5050de6617a3150369908d7caa98e72ea6564f5b269
+          hash: sha256-c836e19642a7bddba34ec9f6802bc0864777c354c8bff38a6128b47706d028e7
 
     # quadsync config
     - path: /etc/quadsync/config.env
