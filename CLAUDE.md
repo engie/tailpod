@@ -4,14 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-Tailpod: infrastructure-as-code for deploying rootless Podman containers on Fedora CoreOS, with each container joining a Tailscale network via ts4nsnet. Container definitions live in a separate git repo and are synced to the host by `quadlet-deploy`, which applies directory-based INI transforms (e.g. Tailscale networking) before deploying.
+Tailpod: infrastructure-as-code for deploying rootless Podman containers on Fedora CoreOS, with each container joining a Tailscale network via ts4nsnet. Container definitions live in a separate git repo and are synced to the host by `quadsync`, which applies directory-based INI transforms (e.g. Tailscale networking) before deploying.
 
 ## Build & Run
 
-**Prerequisites:** `brew install butane jq vfkit` and Go 1.22+
+**Prerequisites:** `brew install butane jq vfkit`
 
 ```bash
-./build.sh          # Build Go binaries + transpile tailpod.bu + secrets.bu → tailpod.ign
+./build.sh          # Transpile tailpod.bu + secrets.bu → tailpod.ign
 ./boot.sh           # Launch FCOS VM (resets disk from .orig, clears EFI state)
 ./vm-ssh.sh         # SSH into running VM as core (resolves IP from DHCP leases)
 ./vm-ssh.sh 'bash -s' < VERIFY.sh   # Run post-boot verification
@@ -20,41 +20,37 @@ Tailpod: infrastructure-as-code for deploying rootless Podman containers on Fedo
 ## Build Pipeline
 
 ```
-quadlet-deploy/ ──→ go build ──→ quadlet-deploy.bin ──┐
-tailpod-mint-key/ → go build ──→ tailpod-mint-key.bin ─┤
-tailpod.bu ────────────────────────────────────────────┼─→ butane --strict ─→ jq merge ─→ tailpod.ign
-secrets.bu ────────────────────────────────────────────┘
+tailpod.bu ─→ butane --strict ─→ jq merge ─→ tailpod.ign
+secrets.bu ─┘
 ```
 
-- `build.sh` builds both Go binaries (linux/arm64, static), then transpiles both `.bu` files and merges their JSON with jq
+- `build.sh` transpiles both `.bu` files and merges their JSON with jq
+- Go binaries are downloaded at first boot from GitHub Releases (not embedded)
 - `secrets.bu` is gitignored; create from `secrets.bu.example`
+
+## Related Repos
+
+- [`engie/quadsync`](https://github.com/engie/quadsync) — Generic git→quadlet deployer with directory-based INI transforms
+- [`engie/tailmint`](https://github.com/engie/tailmint) — Standalone Tailscale auth key minter via OAuth
+- [`engie/containers`](https://github.com/engie/containers) — Container definitions (deployed by quadsync)
 
 ## Architecture
 
-**Two binaries:**
-- `quadlet-deploy` — Generic git→quadlet deployer with directory-based INI transforms. Subcommands: `sync`, `check`, `augment`.
-- `tailpod-mint-key` — Standalone Tailscale auth key minter via OAuth. Referenced by the tailscale transform, not by quadlet-deploy.
+**Two binaries (hosted in separate repos, downloaded at first boot):**
+- `quadsync` — Generic git→quadlet deployer with directory-based INI transforms. Subcommands: `sync`, `check`, `augment`.
+- `tailmint` — Standalone Tailscale auth key minter via OAuth. Referenced by the tailscale transform, not by quadsync.
 
 **On the VM (provisioned by Ignition at first boot):**
 - `enable-linger-core.service` — allows rootless user services to start without a login session
-- `quadlet-deploy-sync.timer` — polls git repo every 2min, deploys/removes containers
-- Transform files in `/etc/quadlet-deploy/transforms/` are merged into specs from matching repo directories
-- Each Tailscale container's `ExecStartPre` runs `sudo tailpod-mint-key` for a fresh ephemeral auth key
+- `quadsync-sync.timer` — polls git repo every 2min, deploys/removes containers
+- Transform files in `/etc/quadsync/transforms/` are merged into specs from matching repo directories
+- Each Tailscale container's `ExecStartPre` runs `sudo tailmint` for a fresh ephemeral auth key
 
 **Key constraint:** Ignition only runs on first boot. The disk image must be fresh (boot.sh handles this by copying from `.raw.orig`).
 
-## Go Modules
-
-Both modules use standard library only (no external dependencies, no CGO).
-
-```bash
-cd quadlet-deploy && go test ./...     # INI parser + merge logic tests
-cd tailpod-mint-key && go test ./...   # OAuth flow + file write tests
-```
-
 ## Transform System
 
-Transform files are `.container` INI files in `/etc/quadlet-deploy/transforms/`. The deployer maps repo directory names to transform filenames:
+Transform files are `.container` INI files in `/etc/quadsync/transforms/`. The deployer maps repo directory names to transform filenames:
 
 - `*.container` (repo root) → deployed as-is, no transform
 - `tailscale/*.container` → merged with `tailscale.container` transform
@@ -82,13 +78,13 @@ The tailscale transform handles all networking, auth key minting, and service li
 
 ## Common Pitfalls
 
-- **Directory ownership:** All directories under `~<user>/.config/` must be owned by that user. Ignition and `os.MkdirAll` (in quadlet-deploy) create directories as root. Podman refuses to run if its config path has root-owned parents. `writeQuadlet` chowns `.config` after creating dirs.
+- **Directory ownership:** All directories under `~<user>/.config/` must be owned by that user. Ignition and `os.MkdirAll` (in quadsync) create directories as root. Podman refuses to run if its config path has root-owned parents. `writeQuadlet` chowns `.config` after creating dirs.
 - **Ignition duplicate users:** The jq merge in `build.sh` must merge `passwd.users` by name (`group_by(.name)[] | add`), not concatenate arrays. Duplicate user entries cause Ignition to fail silently — the VM boots but never reaches a shell.
 - **systemd Environment= quoting:** Values with spaces must be quoted: `Environment="GIT_SSH_COMMAND=ssh -i /path -o Opt=val"`. Without quotes, systemd splits on spaces and only sets the first word.
 - **Regular users, not system users:** Container users must be created without `--system` so that `useradd` auto-allocates subuid/subgid ranges. Without these, rootless Podman fails with "insufficient UIDs or GIDs available in user namespace".
-- **User manager startup delay:** After `useradd` + `loginctl enable-linger`, the user's systemd instance takes time to start (can exceed 30s on first boot). `quadlet-deploy` waits for it, but if it times out the deploy retries on the next sync cycle.
-- **cusers group membership:** Only container users should be in `cusers`. Adding `core` causes `quadlet-deploy` to treat it as a managed container and attempt to delete it during cleanup.
-- **OAuth tag scope:** The tag in `-tag tag:...` passed to `tailpod-mint-key` must match what the Tailscale OAuth client is authorized for. A mismatch gives HTTP 400 from the Tailscale API.
+- **User manager startup delay:** After `useradd` + `loginctl enable-linger`, the user's systemd instance takes time to start (can exceed 30s on first boot). `quadsync` waits for it, but if it times out the deploy retries on the next sync cycle.
+- **cusers group membership:** Only container users should be in `cusers`. Adding `core` causes `quadsync` to treat it as a managed container and attempt to delete it during cleanup.
+- **OAuth tag scope:** The tag in `-tag tag:...` passed to `tailmint` must match what the Tailscale OAuth client is authorized for. A mismatch gives HTTP 400 from the Tailscale API.
 - **Transform in secrets.bu:** The tailscale transform contains the tailnet domain in `--dns-search`. It's provisioned via `secrets.bu`, not `tailpod.bu`.
 
 ## Secrets
@@ -99,8 +95,8 @@ The tailscale transform handles all networking, auth key minting, and service li
 
 | File | Purpose | Provisioned by |
 |------|---------|---------------|
-| `/etc/quadlet-deploy/config.env` | Git URL, branch, transform dir, group | `tailpod.bu` |
-| `/etc/quadlet-deploy/transforms/tailscale.container` | ts4nsnet merge template | `secrets.bu` |
-| `/etc/quadlet-deploy/deploy-key` | SSH deploy key (0600) | `secrets.bu` |
+| `/etc/quadsync/config.env` | Git URL, branch, transform dir, group | `tailpod.bu` |
+| `/etc/quadsync/transforms/tailscale.container` | ts4nsnet merge template | `secrets.bu` |
+| `/etc/quadsync/deploy-key` | SSH deploy key (0600) | `secrets.bu` |
 | `/etc/tailscale/oauth.env` | OAuth client ID/secret (0600) | `secrets.bu` |
-| `/etc/sudoers.d/tailpod-mint-key` | NOPASSWD for cusers group | `tailpod.bu` |
+| `/etc/sudoers.d/tailmint` | NOPASSWD for cusers group | `tailpod.bu` |

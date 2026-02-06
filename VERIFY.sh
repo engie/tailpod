@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verification plan for tailpod: FCOS + rootless Podman + quadlet-deploy + ts4nsnet
+# Verification plan for tailpod: FCOS + rootless Podman + quadsync + ts4nsnet
 # Run these commands after booting with the generated ignition.
 #
 # Usage: ssh into the FCOS host as core, or run remotely with:
@@ -16,7 +16,7 @@ echo
 
 # 1. Check binaries deployed
 echo "1. Binaries"
-for f in /usr/local/bin/ts4nsnet /usr/local/bin/quadlet-deploy /usr/local/bin/tailpod-mint-key; do
+for f in /usr/local/bin/ts4nsnet /usr/local/bin/quadsync /usr/local/bin/tailmint; do
   if [[ -x "$f" ]]; then pass "$f exists and is executable"
   else fail "$f missing or not executable"; fi
 done
@@ -40,14 +40,14 @@ else
 fi
 echo
 
-# 4. Check quadlet-deploy config
-echo "4. quadlet-deploy config"
-if [[ -f /etc/quadlet-deploy/config.env ]]; then
+# 4. Check quadsync config
+echo "4. quadsync config"
+if [[ -f /etc/quadsync/config.env ]]; then
   pass "config.env exists"
 else
   fail "config.env not found"
 fi
-if [[ -d /etc/quadlet-deploy/transforms ]]; then
+if [[ -d /etc/quadsync/transforms ]]; then
   pass "transforms directory exists"
 else
   fail "transforms directory not found"
@@ -56,9 +56,9 @@ echo
 
 # 5. Check tailscale transform
 echo "5. Tailscale transform"
-if [[ -f /etc/quadlet-deploy/transforms/tailscale.container ]]; then
+if [[ -f /etc/quadsync/transforms/tailscale.container ]]; then
   pass "tailscale.container transform exists"
-  if grep -q 'ts4nsnet' /etc/quadlet-deploy/transforms/tailscale.container 2>/dev/null; then
+  if grep -q 'ts4nsnet' /etc/quadsync/transforms/tailscale.container 2>/dev/null; then
     pass "transform references ts4nsnet"
   else
     fail "transform does not reference ts4nsnet"
@@ -70,9 +70,9 @@ echo
 
 # 6. Check deploy key
 echo "6. Deploy key"
-if [[ -f /etc/quadlet-deploy/deploy-key ]]; then
+if [[ -f /etc/quadsync/deploy-key ]]; then
   pass "deploy-key exists"
-  perms=$(stat -c '%a' /etc/quadlet-deploy/deploy-key 2>/dev/null || stat -f '%Lp' /etc/quadlet-deploy/deploy-key)
+  perms=$(stat -c '%a' /etc/quadsync/deploy-key 2>/dev/null || stat -f '%Lp' /etc/quadsync/deploy-key)
   if [[ "$perms" == "600" ]]; then
     pass "deploy-key has mode 0600"
   else
@@ -85,7 +85,7 @@ echo
 
 # 7. Check sudoers
 echo "7. Sudoers"
-if sudo test -f /etc/sudoers.d/tailpod-mint-key; then
+if sudo test -f /etc/sudoers.d/tailmint; then
   pass "sudoers file exists"
 else
   fail "sudoers file not found"
@@ -94,10 +94,10 @@ echo
 
 # 8. Check sync timer
 echo "8. Sync timer"
-if systemctl is-enabled quadlet-deploy-sync.timer &>/dev/null; then
-  pass "quadlet-deploy-sync.timer is enabled"
+if systemctl is-enabled quadsync-sync.timer &>/dev/null; then
+  pass "quadsync-sync.timer is enabled"
 else
-  fail "quadlet-deploy-sync.timer not enabled"
+  fail "quadsync-sync.timer not enabled"
 fi
 echo
 
@@ -115,12 +115,12 @@ else
 fi
 echo
 
-# 10. Test quadlet-deploy check (if repo has been cloned)
-echo "10. quadlet-deploy"
-if sudo GIT_SSH_COMMAND='ssh -i /etc/quadlet-deploy/deploy-key -o StrictHostKeyChecking=accept-new' quadlet-deploy sync 2>&1 | head -5; then
-  pass "quadlet-deploy sync ran (check output above)"
+# 10. Test quadsync check (if repo has been cloned)
+echo "10. quadsync"
+if sudo GIT_SSH_COMMAND='ssh -i /etc/quadsync/deploy-key -o StrictHostKeyChecking=accept-new' quadsync sync 2>&1 | head -5; then
+  pass "quadsync sync ran (check output above)"
 else
-  fail "quadlet-deploy sync failed (may need deploy key or network)"
+  fail "quadsync sync failed (may need deploy key or network)"
 fi
 echo
 

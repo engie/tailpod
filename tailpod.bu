@@ -16,10 +16,10 @@ storage:
     - path: /home/core/.config/containers/systemd
       user: { name: core }
       group: { name: core }
-    - path: /etc/quadlet-deploy
-    - path: /etc/quadlet-deploy/transforms
+    - path: /etc/quadsync
+    - path: /etc/quadsync/transforms
     - path: /etc/tailscale
-    - path: /var/lib/quadlet-deploy
+    - path: /var/lib/quadsync
 
   files:
     # ts4nsnet binary — tailnet networking for rootless containers
@@ -30,35 +30,39 @@ storage:
         verification:
           hash: sha256-b85a461798dd95e3c6befc9444401e1bfec1701c7ad223f8e770405d9652f40e
 
-    # quadlet-deploy binary — git-sync + transform merge deployer
-    - path: /usr/local/bin/quadlet-deploy
+    # quadsync binary — git-sync + transform merge deployer
+    - path: /usr/local/bin/quadsync
       mode: 0755
       contents:
-        local: quadlet-deploy.bin
+        source: https://github.com/engie/quadsync/releases/download/v0.1/quadsync-linux-arm64
+        verification:
+          hash: sha256-df03b901c88962fa004cb363fb8815b1a796e632e25e363251afe9473db91818
 
-    # tailpod-mint-key binary — Tailscale auth key minter
-    - path: /usr/local/bin/tailpod-mint-key
+    # tailmint binary — Tailscale auth key minter
+    - path: /usr/local/bin/tailmint
       mode: 0755
       contents:
-        local: tailpod-mint-key.bin
+        source: https://github.com/engie/tailmint/releases/download/v0.1/tailmint-linux-arm64
+        verification:
+          hash: sha256-a6d3f193e42c13353f03a5050de6617a3150369908d7caa98e72ea6564f5b269
 
-    # quadlet-deploy config
-    - path: /etc/quadlet-deploy/config.env
+    # quadsync config
+    - path: /etc/quadsync/config.env
       mode: 0644
       contents:
         inline: |
           QDEPLOY_GIT_URL=git@github.com:engie/containers.git
           QDEPLOY_GIT_BRANCH=main
-          QDEPLOY_TRANSFORM_DIR=/etc/quadlet-deploy/transforms
-          QDEPLOY_STATE_DIR=/var/lib/quadlet-deploy
+          QDEPLOY_TRANSFORM_DIR=/etc/quadsync/transforms
+          QDEPLOY_STATE_DIR=/var/lib/quadsync
           QDEPLOY_USER_GROUP=cusers
 
-    # Allow managed container users to run tailpod-mint-key as root
-    - path: /etc/sudoers.d/tailpod-mint-key
+    # Allow managed container users to run tailmint as root
+    - path: /etc/sudoers.d/tailmint
       mode: 0440
       contents:
         inline: |
-          %cusers ALL=(root) NOPASSWD: /usr/local/bin/tailpod-mint-key
+          %cusers ALL=(root) NOPASSWD: /usr/local/bin/tailmint
 
 systemd:
   units:
@@ -79,7 +83,7 @@ systemd:
         WantedBy=multi-user.target
 
     # Sync container definitions from git
-    - name: quadlet-deploy-sync.service
+    - name: quadsync-sync.service
       contents: |
         [Unit]
         Description=Sync Quadlet container definitions from git
@@ -88,11 +92,11 @@ systemd:
 
         [Service]
         Type=oneshot
-        ExecStart=/usr/local/bin/quadlet-deploy sync
-        Environment="GIT_SSH_COMMAND=ssh -i /etc/quadlet-deploy/deploy-key -o StrictHostKeyChecking=accept-new"
+        ExecStart=/usr/local/bin/quadsync sync
+        Environment="GIT_SSH_COMMAND=ssh -i /etc/quadsync/deploy-key -o StrictHostKeyChecking=accept-new"
 
     # Timer to poll for container definition changes
-    - name: quadlet-deploy-sync.timer
+    - name: quadsync-sync.timer
       enabled: true
       contents: |
         [Unit]
