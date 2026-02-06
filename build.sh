@@ -7,14 +7,8 @@ if [[ ! -f secrets.bu ]]; then
   exit 1
 fi
 
-# Build Go binaries for FCOS (linux/arm64)
-echo "Building quadlet-deploy..."
-(cd quadlet-deploy && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o ../quadlet-deploy.bin .)
-echo "Building tailpod-mint-key..."
-(cd tailpod-mint-key && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o ../tailpod-mint-key.bin .)
-
 # Transpile both butane files to ignition
-BASE_IGN=$(butane --strict --files-dir=. tailpod.bu)
+BASE_IGN=$(butane --strict tailpod.bu)
 SECRETS_IGN=$(butane --strict secrets.bu)
 
 # Merge: combine secrets into base ignition, merging users by name
