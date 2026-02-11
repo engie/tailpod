@@ -42,20 +42,21 @@ storage:
     - path: /usr/local/bin/tailmint
       mode: 0755
       contents:
-        source: https://github.com/engie/tailmint/releases/download/v0.1/tailmint-linux-arm64
+        source: https://github.com/engie/tailmint/releases/download/v0.2/tailmint-linux-arm64
         verification:
-          hash: sha256-c836e19642a7bddba34ec9f6802bc0864777c354c8bff38a6128b47706d028e7
+          hash: sha256-3f550e82711d39ed7d9f6198ce7e0c47d43f98545a4a0776332743f2cb99cd42
 
     # quadsync config
     - path: /etc/quadsync/config.env
       mode: 0644
       contents:
         inline: |
-          QDEPLOY_GIT_URL=git@github.com:engie/containers.git
-          QDEPLOY_GIT_BRANCH=main
-          QDEPLOY_TRANSFORM_DIR=/etc/quadsync/transforms
-          QDEPLOY_STATE_DIR=/var/lib/quadsync
-          QDEPLOY_USER_GROUP=cusers
+          QUADSYNC_GIT_URL=git@github.com:engie/containers.git
+          QUADSYNC_GIT_BRANCH=main
+          QUADSYNC_TRANSFORM_DIR=/etc/quadsync/transforms
+          QUADSYNC_STATE_DIR=/var/lib/quadsync
+          QUADSYNC_USER_GROUP=cusers
+          QUADSYNC_SSH_KEY=/etc/quadsync/deploy-key
 
     # Allow managed container users to run tailmint as root
     - path: /etc/sudoers.d/tailmint
@@ -93,7 +94,6 @@ systemd:
         [Service]
         Type=oneshot
         ExecStart=/usr/local/bin/quadsync sync
-        Environment="GIT_SSH_COMMAND=ssh -i /etc/quadsync/deploy-key -o StrictHostKeyChecking=accept-new"
 
     # Timer to poll for container definition changes
     - name: quadsync-sync.timer
