@@ -101,9 +101,10 @@ systemd:
       contents: |
         [Unit]
         Description=Poll for container definition changes
+        After=systemd-logind.service
 
         [Timer]
-        OnBootSec=30s
+        OnActiveSec=0
         OnUnitActiveSec=2min
 
         [Install]
