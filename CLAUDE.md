@@ -91,6 +91,49 @@ The tailscale transform handles all networking, auth key minting, and service li
 
 `secrets.bu` contains Tailscale OAuth credentials, SSH deploy key, and the tailscale transform (which includes the tailnet domain). It's merged at build time and gitignored. The OAuth client ID/secret are used to mint short-lived ephemeral auth keys at container start — they are not the auth keys themselves.
 
+## Integration Test (after every significant change)
+
+After any significant change to tailpod config, butane files, or related binaries, rebuild and reimage the Hetzner test machine to verify end-to-end health.
+
+```bash
+# 1. Build ignition config
+./build.sh
+
+# 2. Reimage the test server
+/home/stephen/hetzner-fcos/rebuild.sh /home/stephen/orchestration/tailpod/tailpod.ign
+
+# 3. Remove stale host key and wait ~30s for boot
+ssh-keygen -R 77.42.39.209
+sleep 30
+
+# 4. SSH in and verify ignition provisioned correctly
+ssh -o StrictHostKeyChecking=accept-new core@77.42.39.209 '
+  ls /usr/local/bin/{quadsync,tailmint,ts4nsnet} &&
+  systemctl status enable-linger-core.service --no-pager &&
+  systemctl status quadsync-sync.timer --no-pager
+'
+
+# 5. Check quadsync ran successfully (creates container users, deploys quadlets)
+ssh core@77.42.39.209 'systemctl status quadsync-sync.service --no-pager'
+
+# 6. Check container is running with ts4nsnet on the tailnet
+ssh core@77.42.39.209 '
+  sudo systemctl --user -M nginx-demo@ status nginx-demo.service --no-pager
+'
+
+# 7. Verify nginx is reachable over the tailnet via MagicDNS (run from a tailnet machine)
+#    Tailscale may append -1, -2 etc. if a stale node with the same name exists
+TSHOST=$(tailscale status | grep nginx-demo | grep -v offline | awk '{print $2}')
+curl -s -o /dev/null -w "HTTP %{http_code}\n" http://$TSHOST/
+```
+
+**What to check:**
+- `quadsync-sync.service` exited 0 (cloned repo, created users, deployed specs)
+- `nginx-demo.service` is active (running) under the nginx-demo user
+- `tailmint` ExecStartPre exited 0 (minted auth key)
+- `ts4nsnet` is running and created a `tap0` interface with a `100.x.x.x` Tailscale IP
+- nginx responds HTTP 200 over its Tailscale MagicDNS name
+
 ## Config Files on VM
 
 | File | Purpose | Provisioned by |
