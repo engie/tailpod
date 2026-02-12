@@ -14,7 +14,6 @@ Tailpod: infrastructure-as-code for deploying rootless Podman containers on Fedo
 ./build.sh          # Transpile tailpod.bu + secrets.bu → tailpod.ign
 ./boot.sh           # Launch FCOS VM (resets disk from .orig, clears EFI state)
 ./vm-ssh.sh         # SSH into running VM as core (resolves IP from DHCP leases)
-./vm-ssh.sh 'bash -s' < VERIFY.sh   # Run post-boot verification
 ```
 
 ## Build Pipeline
