@@ -41,7 +41,6 @@ secrets.bu ─┘
 - `tailmint` — Standalone Tailscale auth key minter via OAuth. Referenced by the tailscale transform, not by quadsync.
 
 **On the VM (provisioned by Ignition at first boot):**
-- `enable-linger-core.service` — allows rootless user services to start without a login session
 - `quadsync-sync.timer` — polls git repo every 2min, deploys/removes containers
 - Transform files in `/etc/quadsync/transforms/` are merged into specs from matching repo directories
 - Each Tailscale container's `ExecStartPre` runs `sudo tailmint` for a fresh ephemeral auth key
@@ -109,7 +108,6 @@ sleep 30
 # 4. SSH in and verify ignition provisioned correctly
 ssh -o StrictHostKeyChecking=accept-new core@77.42.39.209 '
   ls /usr/local/bin/{quadsync,tailmint,ts4nsnet} &&
-  systemctl status enable-linger-core.service --no-pager &&
   systemctl status quadsync-sync.timer --no-pager
 '
 

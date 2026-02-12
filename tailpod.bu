@@ -7,15 +7,6 @@ passwd:
 
 storage:
   directories:
-    - path: /home/core/.config
-      user: { name: core }
-      group: { name: core }
-    - path: /home/core/.config/containers
-      user: { name: core }
-      group: { name: core }
-    - path: /home/core/.config/containers/systemd
-      user: { name: core }
-      group: { name: core }
     - path: /etc/quadsync
     - path: /etc/quadsync/transforms
     - path: /etc/tailscale
@@ -67,22 +58,6 @@ storage:
 
 systemd:
   units:
-    # Enable lingering so rootless user services start at boot
-    - name: enable-linger-core.service
-      enabled: true
-      contents: |
-        [Unit]
-        Description=Enable lingering for core user
-        After=systemd-logind.service
-        ConditionPathExists=!/var/lib/systemd/linger/core
-
-        [Service]
-        Type=oneshot
-        ExecStart=/usr/bin/loginctl enable-linger core
-
-        [Install]
-        WantedBy=multi-user.target
-
     # Sync container definitions from git
     - name: quadsync-sync.service
       contents: |
