@@ -49,12 +49,12 @@ storage:
           QUADSYNC_USER_GROUP=cusers
           QUADSYNC_SSH_KEY=/etc/quadsync/deploy-key
 
-    # Allow managed container users to run tailmint as root
+    # Allow managed container users to run tailmint as root (constrained args)
     - path: /etc/sudoers.d/tailmint
       mode: 0440
       contents:
         inline: |
-          %cusers ALL=(root) NOPASSWD: /usr/local/bin/tailmint
+          %cusers ALL=(root) NOPASSWD: /usr/local/bin/tailmint -config /etc/tailscale/oauth.env -tag tag\:tailpod -hostname * -output /run/user/*/ts-authkeys/*.env
 
 systemd:
   units:
