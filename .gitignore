@@ -1,5 +1,6 @@
 site.env
 deploy_key
+server.bu
 *.ign
 *.raw
 *.raw.orig

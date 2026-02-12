@@ -19,6 +19,28 @@ source site.env
 set +a
 
 # Substitute variables and transpile to ignition
-envsubst < tailpod.bu | butane --strict --files-dir . > tailpod.ign
+BASE_IGN=$(envsubst < tailpod.bu | butane --strict --files-dir .)
 
-echo "Generated tailpod.ign"
+if [[ -f server.bu ]]; then
+  SERVER_IGN=$(envsubst < server.bu | butane --strict --files-dir .)
+
+  # Merge: server.bu additions layered onto base
+  echo "$BASE_IGN" | jq --argjson s "$SERVER_IGN" '
+    .storage.files += ($s.storage.files // [])
+    | .storage.directories += ($s.storage.directories // [])
+    | .storage.links += ($s.storage.links // [])
+    | .passwd.users = (
+        [(.passwd.users // []) + ($s.passwd.users // []) | group_by(.name)[] | add]
+      )
+    | .passwd.groups = (
+        [(.passwd.groups // []) + ($s.passwd.groups // []) | group_by(.name)[] | add]
+      )
+    | .systemd.units = (
+        [(.systemd.units // []) + ($s.systemd.units // []) | group_by(.name)[] | add]
+      )
+  ' > tailpod.ign
+  echo "Generated tailpod.ign (with server.bu)"
+else
+  echo "$BASE_IGN" > tailpod.ign
+  echo "Generated tailpod.ign"
+fi

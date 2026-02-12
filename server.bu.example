@@ -1,0 +1,66 @@
+variant: fcos
+version: 1.6.0
+
+storage:
+  files:
+    # SMB credentials for NAS mount (referenced by the .mount unit)
+    - path: /etc/samba/nas-credentials
+      mode: 0600
+      contents:
+        inline: |
+          username=your-smb-user
+          password=your-smb-password
+
+    # Local script embedded via contents.local (reads from --files-dir at build time)
+    - path: /usr/local/bin/backup.sh
+      mode: 0755
+      contents:
+        local: backup.sh
+
+  directories:
+    - path: /mnt/nas
+
+systemd:
+  units:
+    # Mount NAS share — unit name must match mount path (mnt-nas.mount → /mnt/nas)
+    - name: mnt-nas.mount
+      enabled: true
+      contents: |
+        [Unit]
+        Description=NAS SMB share
+        After=network-online.target
+        Wants=network-online.target
+
+        [Mount]
+        What=//nas-host/share
+        Where=/mnt/nas
+        Type=cifs
+        Options=credentials=/etc/samba/nas-credentials,uid=0,gid=0,file_mode=0644,dir_mode=0755,vers=3.0
+
+        [Install]
+        WantedBy=multi-user.target
+
+    # Example periodic task — runs daily at 3am
+    - name: example-backup.service
+      contents: |
+        [Unit]
+        Description=Example backup task
+        After=mnt-nas.mount
+        Requires=mnt-nas.mount
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/local/bin/backup.sh
+
+    - name: example-backup.timer
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Run example backup daily
+
+        [Timer]
+        OnCalendar=*-*-* 03:00:00
+        Persistent=true
+
+        [Install]
+        WantedBy=timers.target
