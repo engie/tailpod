@@ -8,10 +8,10 @@ Tailpod: infrastructure-as-code for deploying rootless Podman containers on Fedo
 
 ## Build & Run
 
-**Prerequisites:** `brew install butane jq vfkit`
+**Prerequisites:** `brew install butane vfkit` (also needs `envsubst` from `gettext`)
 
 ```bash
-./build.sh          # Transpile tailpod.bu + secrets.bu → tailpod.ign
+./build.sh          # Substitute site.env into tailpod.bu → tailpod.ign
 ./boot.sh           # Launch FCOS VM (resets disk from .orig, clears EFI state)
 ./vm-ssh.sh         # SSH into running VM as core (resolves IP from DHCP leases)
 ```
@@ -19,13 +19,14 @@ Tailpod: infrastructure-as-code for deploying rootless Podman containers on Fedo
 ## Build Pipeline
 
 ```
-tailpod.bu ─→ butane --strict ─→ jq merge ─→ tailpod.ign
-secrets.bu ─┘
+site.env ─→ envsubst ─→ butane --strict --files-dir . ─→ tailpod.ign
+tailpod.bu ─┘              └── deploy-key (embedded via contents.local)
 ```
 
-- `build.sh` transpiles both `.bu` files and merges their JSON with jq
+- `build.sh` substitutes `${VAR}` placeholders in `tailpod.bu` with values from `site.env`, then transpiles to ignition
+- The SSH deploy key is embedded via butane's `contents.local` directive (avoids multi-line env var issues)
 - Go binaries are downloaded at first boot from GitHub Releases (not embedded)
-- `secrets.bu` is gitignored; create from `secrets.bu.example`
+- `site.env` and `deploy-key` are gitignored; create from `site.env.example`
 
 ## Related Repos
 
@@ -77,17 +78,21 @@ The tailscale transform handles all networking, auth key minting, and service li
 ## Common Pitfalls
 
 - **Directory ownership:** All directories under `~<user>/.config/` must be owned by that user. Ignition and `os.MkdirAll` (in quadsync) create directories as root. Podman refuses to run if its config path has root-owned parents. `writeQuadlet` chowns `.config` after creating dirs.
-- **Ignition duplicate users:** The jq merge in `build.sh` must merge `passwd.users` by name (`group_by(.name)[] | add`), not concatenate arrays. Duplicate user entries cause Ignition to fail silently — the VM boots but never reaches a shell.
 - **systemd Environment= quoting:** Values with spaces must be quoted: `Environment="GIT_SSH_COMMAND=ssh -i /path -o Opt=val"`. Without quotes, systemd splits on spaces and only sets the first word.
 - **Regular users, not system users:** Container users must be created without `--system` so that `useradd` auto-allocates subuid/subgid ranges. Without these, rootless Podman fails with "insufficient UIDs or GIDs available in user namespace".
 - **User manager startup delay:** After `useradd` + `loginctl enable-linger`, the user's systemd instance takes time to start (can exceed 30s on first boot). `quadsync` waits for it, but if it times out the deploy retries on the next sync cycle.
 - **cusers group membership:** Only container users should be in `cusers`. Adding `core` causes `quadsync` to treat it as a managed container and attempt to delete it during cleanup.
 - **OAuth tag scope:** The tag in `-tag tag:...` passed to `tailmint` must match what the Tailscale OAuth client is authorized for. A mismatch gives HTTP 400 from the Tailscale API.
-- **Transform in secrets.bu:** The tailscale transform contains the tailnet domain in `--dns-search`. It's provisioned via `secrets.bu`, not `tailpod.bu`.
+- **envsubst replaces all `${}` patterns:** tailpod.bu must not contain `${VAR}` patterns that aren't meant for substitution. Systemd specifiers (`%t`, `%N`) are safe since they use `%`, not `$`.
 
-## Secrets
+## Site Configuration
 
-`secrets.bu` contains Tailscale OAuth credentials, SSH deploy key, and the tailscale transform (which includes the tailnet domain). It's merged at build time and gitignored. The OAuth client ID/secret are used to mint short-lived ephemeral auth keys at container start — they are not the auth keys themselves.
+Site-specific values are kept in two gitignored files:
+
+- **`site.env`** — single-line key=value pairs (SSH pubkey, OAuth credentials, tailnet domain). Substituted into `tailpod.bu` at build time via `envsubst`.
+- **`deploy-key`** — raw SSH private key file. Embedded into ignition via butane's `contents.local` directive (avoids multi-line env var issues).
+
+The OAuth client ID/secret are used to mint short-lived ephemeral auth keys at container start — they are not the auth keys themselves.
 
 ## Integration Test (after every significant change)
 
@@ -136,7 +141,7 @@ curl -s -o /dev/null -w "HTTP %{http_code}\n" http://$TSHOST/
 | File | Purpose | Provisioned by |
 |------|---------|---------------|
 | `/etc/quadsync/config.env` | Git URL, branch, transform dir, group | `tailpod.bu` |
-| `/etc/quadsync/transforms/tailscale.container` | ts4nsnet merge template | `secrets.bu` |
-| `/etc/quadsync/deploy-key` | SSH deploy key (0600) | `secrets.bu` |
-| `/etc/tailscale/oauth.env` | OAuth client ID/secret (0600) | `secrets.bu` |
+| `/etc/quadsync/transforms/tailscale.container` | ts4nsnet merge template | `tailpod.bu` (domain from `site.env`) |
+| `/etc/quadsync/deploy-key` | SSH deploy key (0600) | `deploy-key` via `contents.local` |
+| `/etc/tailscale/oauth.env` | OAuth client ID/secret (0600) | `tailpod.bu` (values from `site.env`) |
 | `/etc/sudoers.d/tailmint` | NOPASSWD for cusers group | `tailpod.bu` |

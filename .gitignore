@@ -1,4 +1,5 @@
-secrets.bu
+site.env
+deploy_key
 *.ign
 *.raw
 *.raw.orig
