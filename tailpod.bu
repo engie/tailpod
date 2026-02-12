@@ -34,9 +34,9 @@ storage:
     - path: /usr/local/bin/quadsync
       mode: 0755
       contents:
-        source: https://github.com/engie/quadsync/releases/download/v0.1/quadsync-linux-arm64
+        source: https://github.com/engie/quadsync/releases/download/v0.2/quadsync-linux-arm64
         verification:
-          hash: sha256-0153cf9b4db26929d45e4f16bfcc995fab41df5b222c0b630753adc182ce2a2d
+          hash: sha256-e7d7c22ea9a2d5ccbe5e6f68210e59287fd5a8123bfbe37a8006b9fa07425313
 
     # tailmint binary — Tailscale auth key minter
     - path: /usr/local/bin/tailmint
