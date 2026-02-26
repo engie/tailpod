@@ -14,7 +14,9 @@ storage:
     - path: /etc/quadsync
     - path: /etc/quadsync/transforms
     - path: /etc/tailscale
+    - path: /etc/samba
     - path: /var/lib/quadsync
+    - path: /mnt/storage
 
   files:
     # ts4nsnet binary — tailnet networking for rootless containers
@@ -97,8 +99,69 @@ storage:
           [Install]
           WantedBy=default.target
 
+    # Base transform — applied to all containers
+    - path: /etc/quadsync/transforms/_base.container
+      mode: 0644
+      contents:
+        inline: |
+          [Unit]
+          After=mnt-storage.mount
+          Requires=mnt-storage.mount
+
+          [Service]
+          +ExecStartPre=sudo /usr/local/bin/storage-init %N
+
+          [Container]
+          +Volume=/mnt/storage/%N:/data
+
+    # Storage init script — creates per-container dirs on SMB mount
+    - path: /usr/local/bin/storage-init
+      mode: 0755
+      contents:
+        inline: |
+          #!/bin/bash
+          set -euo pipefail
+          base="/mnt/storage"
+          name="$(basename "$1")"
+          dir="$base/$name"
+          mkdir -p "$dir"
+          chown "$name:$name" "$dir"
+
+    # Allow managed container users to run storage-init as root
+    - path: /etc/sudoers.d/storage-init
+      mode: 0440
+      contents:
+        inline: |
+          %cusers ALL=(root) NOPASSWD: /usr/local/bin/storage-init *
+
+    # SMB credentials for storage mount
+    - path: /etc/samba/storage-credentials
+      mode: 0600
+      contents:
+        inline: |
+          username=${STORAGE_SMB_USER}
+          password=${STORAGE_SMB_PASSWORD}
+
 systemd:
   units:
+    # Mount SMB storage share
+    - name: mnt-storage.mount
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Mount SMB storage share
+        After=network-online.target
+        Wants=network-online.target
+
+        [Mount]
+        What=//${STORAGE_SMB_HOST}/${STORAGE_SMB_SHARE}
+        Where=/mnt/storage
+        Type=cifs
+        Options=vers=3.0,credentials=/etc/samba/storage-credentials,uid=0,gid=0,dir_mode=0755,file_mode=0644
+
+        [Install]
+        WantedBy=remote-fs.target
+
     # Sync container definitions from git
     - name: quadsync-sync.service
       contents: |
