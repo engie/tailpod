@@ -16,7 +16,7 @@ storage:
     - path: /etc/tailscale
     - path: /etc/samba
     - path: /var/lib/quadsync
-    - path: /mnt/storage
+    - path: /var/mnt/storage
 
   files:
     # ts4nsnet binary — tailnet networking for rootless containers
@@ -105,27 +105,25 @@ storage:
       contents:
         inline: |
           [Unit]
-          After=mnt-storage.mount
-          Requires=mnt-storage.mount
+          After=var-mnt-storage.mount
+          Requires=var-mnt-storage.mount
 
           [Service]
           +ExecStartPre=sudo /usr/local/bin/storage-init %N
 
           [Container]
-          +Volume=/mnt/storage/%N:/data
+          +Volume=/var/mnt/storage/%N:/data
 
     # Storage init script — creates per-container dirs on SMB mount
+    # Note: no shell variables — envsubst runs over this file.
     - path: /usr/local/bin/storage-init
       mode: 0755
       contents:
         inline: |
           #!/bin/bash
           set -euo pipefail
-          base="/mnt/storage"
-          name="$(basename "$1")"
-          dir="$base/$name"
-          mkdir -p "$dir"
-          chown "$name:$name" "$dir"
+          mkdir -p "/var/mnt/storage/$(basename "$1")"
+          chown "$(basename "$1"):$(basename "$1")" "/var/mnt/storage/$(basename "$1")"
 
     # Allow managed container users to run storage-init as root
     - path: /etc/sudoers.d/storage-init
@@ -145,7 +143,7 @@ storage:
 systemd:
   units:
     # Mount SMB storage share
-    - name: mnt-storage.mount
+    - name: var-mnt-storage.mount
       enabled: true
       contents: |
         [Unit]
@@ -155,7 +153,7 @@ systemd:
 
         [Mount]
         What=//${STORAGE_SMB_HOST}/${STORAGE_SMB_SHARE}
-        Where=/mnt/storage
+        Where=/var/mnt/storage
         Type=cifs
         Options=vers=3.0,credentials=/etc/samba/storage-credentials,uid=0,gid=0,dir_mode=0755,file_mode=0644
 
