@@ -112,7 +112,49 @@ storage:
           +ExecStartPre=sudo /usr/local/bin/storage-init %N
 
           [Container]
-          +Volume=/var/mnt/storage/%N:/data
+          +Volume=%N-data.volume:/data
+
+    # Litestream config — shared by all sidecar containers
+    - path: /etc/litestream.yml
+      mode: 0644
+      contents:
+        inline: |
+          dbs:
+            - path: /data/db.sqlite
+              replicas:
+                - type: file
+                  path: /backup
+
+    # Named volume companion template — local storage for SQLite
+    - path: /etc/quadsync/transforms/_base-data.volume
+      mode: 0644
+      contents:
+        inline: |
+          [Volume]
+
+    # Litestream sidecar companion template — replicates SQLite to SMB
+    - path: /etc/quadsync/transforms/_base-litestream.container
+      mode: 0644
+      contents:
+        inline: |
+          [Unit]
+          After=var-mnt-storage.mount
+          Requires=var-mnt-storage.mount
+
+          [Container]
+          Image=docker.io/litestream/litestream:latest
+          Exec=replicate
+          Volume={{.Name}}-data.volume:/data
+          Volume=/var/mnt/storage/{{.Name}}/db_backup:/backup
+          Volume=/etc/litestream.yml:/etc/litestream.yml:ro
+
+          [Service]
+          ExecStartPre=sudo /usr/local/bin/storage-init {{.Name}}
+          Restart=always
+          RestartSec=10s
+
+          [Install]
+          WantedBy=default.target
 
     # Storage init script — creates per-container dirs on SMB mount
     # Note: no shell variables — envsubst runs over this file.
@@ -122,8 +164,9 @@ storage:
         inline: |
           #!/bin/bash
           set -euo pipefail
-          mkdir -p "/var/mnt/storage/$(basename "$1")"
-          chown "$(basename "$1"):$(basename "$1")" "/var/mnt/storage/$(basename "$1")"
+          NAME="$(basename "$1")"
+          mkdir -p "/var/mnt/storage/$NAME/db_backup"
+          chown "$NAME:$NAME" "/var/mnt/storage/$NAME"
 
     # Allow managed container users to run storage-init as root
     - path: /etc/sudoers.d/storage-init
@@ -155,7 +198,7 @@ systemd:
         What=//${STORAGE_SMB_HOST}/${STORAGE_SMB_SHARE}
         Where=/var/mnt/storage
         Type=cifs
-        Options=vers=3.0,credentials=/etc/samba/storage-credentials,uid=0,gid=0,dir_mode=0755,file_mode=0644
+        Options=vers=3.0,credentials=/etc/samba/storage-credentials,uid=0,gid=0,dir_mode=0777,file_mode=0666
 
         [Install]
         WantedBy=remote-fs.target

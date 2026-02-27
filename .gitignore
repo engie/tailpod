@@ -1,5 +1,7 @@
 site.env
 deploy_key
+tailpod_key
+tailpod_key.pub
 server.bu
 *.ign
 *.raw
