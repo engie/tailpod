@@ -111,8 +111,8 @@ storage:
           [Service]
           +ExecStartPre=sudo /usr/local/bin/storage-init %N
 
-          [Container]
-          +Volume=%N-data.volume:/data
+          # Volume=%N-data.volume:/data — blocked: quadlet generator doesn't
+          # resolve %N in Volume references (needs quadsync template support)
 
     # Litestream config — shared by all sidecar containers
     - path: /etc/litestream.yml
