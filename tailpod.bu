@@ -23,25 +23,25 @@ storage:
     - path: /usr/local/bin/ts4nsnet
       mode: 0755
       contents:
-        source: https://github.com/engie/ts4nsnet/releases/download/v0.1/ts4nsnet-linux-arm64
+        source: https://github.com/engie/ts4nsnet/releases/download/v0.2/ts4nsnet-linux-arm64
         verification:
-          hash: sha256-b85a461798dd95e3c6befc9444401e1bfec1701c7ad223f8e770405d9652f40e
+          hash: sha256-e980a01ae300716213793b5c436ff3b950d6693a0f4f66c85a29504335f8b267
 
     # quadsync binary — git-sync + transform merge deployer
     - path: /usr/local/bin/quadsync
       mode: 0755
       contents:
-        source: https://github.com/engie/quadsync/releases/download/v0.2/quadsync-linux-arm64
+        source: https://github.com/engie/quadsync/releases/download/v0.3/quadsync-linux-arm64
         verification:
-          hash: sha256-e7d7c22ea9a2d5ccbe5e6f68210e59287fd5a8123bfbe37a8006b9fa07425313
+          hash: sha256-08985d3595060915f1607b6065b7f8fe63cc9122ebd69039564676dc6bceabe1
 
     # tailmint binary — Tailscale auth key minter
     - path: /usr/local/bin/tailmint
       mode: 0755
       contents:
-        source: https://github.com/engie/tailmint/releases/download/v0.2/tailmint-linux-arm64
+        source: https://github.com/engie/tailmint/releases/download/v0.3/tailmint-linux-arm64
         verification:
-          hash: sha256-3f550e82711d39ed7d9f6198ce7e0c47d43f98545a4a0776332743f2cb99cd42
+          hash: sha256-0b4d99607ba084c9224351f7eac09e2614cd609d7cd0b93b0edc6f6e4a643ce2
 
     # quadsync config
     - path: /etc/quadsync/config.env
