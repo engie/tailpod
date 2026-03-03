@@ -174,7 +174,7 @@ storage:
             exit 1
           fi
           mkdir -p "/var/mnt/storage/$NAME/db_backup"
-          chown "$NAME:$NAME" "/var/mnt/storage/$NAME"
+          # CIFS mount does not support POSIX ownership; chown is a no-op
 
     # Allow managed container users to run storage-init as root
     # Sudoers glob: [a-z] prefix + alphanumeric/hyphen/underscore only
