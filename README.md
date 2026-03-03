@@ -27,42 +27,49 @@ quadsync-sync.timer (every 2min)
 ## Prerequisites
 
 ```
-brew install butane jq
+brew install butane
 ```
 
-For local VM testing, also install `vfkit`.
+For local VM testing, also install `vfkit`. You also need Go 1.22+ (the build tool is a Go program).
 
 ## Setup
 
-1. Copy the secrets template and fill in your credentials:
+1. Copy the config template and fill in your values:
 
    ```
-   cp secrets.bu.example secrets.bu
+   cp site.env.example site.env
    ```
 
    You need to provide:
    - An SSH public key for the `core` user
    - Tailscale OAuth client ID and secret (for minting ephemeral auth keys)
-   - An SSH deploy key for your container definitions repo
    - Your tailnet domain (used in the `--dns-search` flag of the Tailscale transform)
+   - Git URL and branch for your container definitions repo
+   - SMB storage credentials (if using Litestream replication)
 
-2. Build the Ignition manifest:
+2. Place your SSH deploy key:
+
+   ```
+   cp /path/to/your/key deploy_key
+   ```
+
+3. Build the Ignition manifest:
 
    ```
    ./build.sh
    ```
 
-   This transpiles both `.bu` files with `butane --strict`, then merges their JSON output with jq (deduplicating users by name to avoid silent Ignition failures).
+   This runs a Go build tool (`cmd/build/`) that safely parses `site.env`, substitutes only allowlisted `${VAR}` patterns into `.bu` files, runs `butane --strict`, and optionally merges a `server.bu` overlay.
 
 ## Build pipeline
 
 ```
-tailpod.bu ─┐
-             ├── butane --strict ──→ jq merge ──→ tailpod.ign
-secrets.bu ─┘
+site.env ─→ cmd/build (Go) ─→ substitute ${VAR} ─→ butane --strict ─→ tailpod.ign
+tailpod.bu ─┘                                                           ↑
+server.bu (optional) ─→ same pipeline ─→ JSON merge ────────────────────┘
 ```
 
-`tailpod.bu` contains all non-secret configuration: directory layout, binary downloads, quadsync config, sudoers rules, and systemd units. `secrets.bu` contains credentials and the Tailscale transform (which includes the tailnet domain). Both are merged at build time; only `secrets.bu` is gitignored.
+`site.env` contains site-specific values (credentials, tailnet domain, SSH pubkey). `tailpod.bu` contains all configuration with `${VAR}` placeholders. The Go build tool (`cmd/build/`) parses `site.env` as plain KEY=VALUE (no shell evaluation), substitutes only the 10 allowlisted variables, and pipes the result through `butane`. If `server.bu` exists, it's processed the same way and merged into the base ignition. Both `site.env` and `server.bu` are gitignored.
 
 ## What gets provisioned
 
@@ -122,11 +129,11 @@ Merge rules:
 ## Pitfalls
 
 - **Ignition is first-boot only.** The VM disk must be fresh. `boot.sh` handles this by copying from `.raw.orig`.
-- **Duplicate users in Ignition** cause silent failure (VM boots but never reaches a shell). `build.sh` deduplicates with `group_by(.name)[] | add`.
+- **Duplicate users in Ignition** cause silent failure (VM boots but never reaches a shell). The build tool deduplicates by merging entries with the same name.
 - **Directory ownership** under `~<user>/.config/` must belong to that user, not root. Podman refuses to start otherwise.
 - **Container users must be non-system** so that `useradd` auto-allocates subuid/subgid ranges for rootless Podman.
 - **OAuth tag scope** must match the `-tag` passed to tailmint, or the Tailscale API returns HTTP 400.
-- **secrets.bu is required.** The Tailscale transform lives there (it contains the tailnet domain), not in `tailpod.bu`.
+- **site.env is required.** All site-specific values (credentials, tailnet domain) are substituted from this file at build time.
 
 ## Related projects
 
