@@ -164,16 +164,25 @@ storage:
         inline: |
           #!/bin/bash
           set -euo pipefail
+          if [[ -z "${1-}" ]]; then
+            echo "storage-init: missing container name argument" >&2
+            exit 1
+          fi
           NAME="$(basename "$1")"
+          if [[ ! "$NAME" =~ ^[a-z0-9][a-z0-9_-]{0,62}$ ]]; then
+            echo "storage-init: invalid container name: $NAME" >&2
+            exit 1
+          fi
           mkdir -p "/var/mnt/storage/$NAME/db_backup"
           chown "$NAME:$NAME" "/var/mnt/storage/$NAME"
 
     # Allow managed container users to run storage-init as root
+    # Sudoers glob: [a-z] prefix + alphanumeric/hyphen/underscore only
     - path: /etc/sudoers.d/storage-init
       mode: 0440
       contents:
         inline: |
-          %cusers ALL=(root) NOPASSWD: /usr/local/bin/storage-init *
+          %cusers ALL=(root) NOPASSWD: /usr/local/bin/storage-init [a-z][a-z0-9_-]*
 
     # SMB credentials for storage mount
     - path: /etc/samba/storage-credentials
