@@ -2,65 +2,120 @@ variant: fcos
 version: 1.6.0
 
 storage:
+  directories:
+    - path: /etc/samba
+    - path: /var/mnt/storage
+
   files:
-    # SMB credentials for NAS mount (referenced by the .mount unit)
-    - path: /etc/samba/nas-credentials
+    # Base transform — applied to all containers (storage + data volume)
+    - path: /etc/quadsync/transforms/_base.container
+      mode: 0644
+      contents:
+        inline: |
+          [Unit]
+          After=var-mnt-storage.mount
+          Requires=var-mnt-storage.mount
+
+          [Service]
+          +ExecStartPre=sudo /usr/local/bin/storage-init %N
+
+          [Container]
+          Volume={{.Name}}-data.volume:/data
+
+    # Named volume companion template — local storage for SQLite
+    - path: /etc/quadsync/transforms/_base-data.volume
+      mode: 0644
+      contents:
+        inline: |
+          [Volume]
+
+    # Litestream sidecar companion template — replicates SQLite to SMB
+    - path: /etc/quadsync/transforms/_base-litestream.container
+      mode: 0644
+      contents:
+        inline: |
+          [Unit]
+          After=var-mnt-storage.mount
+          Requires=var-mnt-storage.mount
+
+          [Container]
+          Image=docker.io/litestream/litestream:latest
+          Exec=replicate
+          Volume={{.Name}}-data.volume:/data
+          Volume=/var/mnt/storage/{{.Name}}/db_backup:/backup
+          Volume=/etc/litestream.yml:/etc/litestream.yml:ro
+
+          [Service]
+          ExecStartPre=sudo /usr/local/bin/storage-init {{.Name}}
+          Restart=always
+          RestartSec=10s
+
+          [Install]
+          WantedBy=default.target
+
+    # Litestream config — shared by all sidecar containers
+    - path: /etc/litestream.yml
+      mode: 0644
+      contents:
+        inline: |
+          dbs:
+            - path: /data/db.sqlite
+              replicas:
+                - type: file
+                  path: /backup
+
+    # Storage init script — creates per-container dirs on SMB mount
+    # Note: no shell variables — envsubst runs over this file.
+    - path: /usr/local/bin/storage-init
+      mode: 0755
+      contents:
+        inline: |
+          #!/bin/bash
+          set -euo pipefail
+          if [[ -z "${1-}" ]]; then
+            echo "storage-init: missing container name argument" >&2
+            exit 1
+          fi
+          NAME="$(basename "$1")"
+          if [[ ! "$NAME" =~ ^[a-z0-9][a-z0-9_-]{0,62}$ ]]; then
+            echo "storage-init: invalid container name: $NAME" >&2
+            exit 1
+          fi
+          mkdir -p "/var/mnt/storage/$NAME/db_backup"
+          # CIFS mount does not support POSIX ownership; chown is a no-op
+
+    # Allow managed container users to run storage-init as root
+    # Sudoers glob: [a-z] prefix + alphanumeric/hyphen/underscore only
+    - path: /etc/sudoers.d/storage-init
+      mode: 0440
+      contents:
+        inline: |
+          %cusers ALL=(root) NOPASSWD: /usr/local/bin/storage-init [a-z][a-z0-9_-]*
+
+    # SMB credentials for storage mount
+    - path: /etc/samba/storage-credentials
       mode: 0600
       contents:
         inline: |
-          username=your-smb-user
-          password=your-smb-password
-
-    # Local script embedded via contents.local (reads from --files-dir at build time)
-    - path: /usr/local/bin/backup.sh
-      mode: 0755
-      contents:
-        local: backup.sh
-
-  directories:
-    - path: /mnt/nas
+          username=${STORAGE_SMB_USER}
+          password=${STORAGE_SMB_PASSWORD}
 
 systemd:
   units:
-    # Mount NAS share — unit name must match mount path (mnt-nas.mount → /mnt/nas)
-    - name: mnt-nas.mount
+    # Mount SMB storage share
+    - name: var-mnt-storage.mount
       enabled: true
       contents: |
         [Unit]
-        Description=NAS SMB share
+        Description=Mount SMB storage share
         After=network-online.target
         Wants=network-online.target
 
         [Mount]
-        What=//nas-host/share
-        Where=/mnt/nas
+        What=//${STORAGE_SMB_HOST}/${STORAGE_SMB_SHARE}
+        Where=/var/mnt/storage
         Type=cifs
-        Options=credentials=/etc/samba/nas-credentials,uid=0,gid=0,file_mode=0644,dir_mode=0755,vers=3.0
+        Options=vers=3.0,credentials=/etc/samba/storage-credentials,uid=0,gid=0,dir_mode=0777,file_mode=0666
 
         [Install]
-        WantedBy=multi-user.target
-
-    # Example periodic task — runs daily at 3am
-    - name: example-backup.service
-      contents: |
-        [Unit]
-        Description=Example backup task
-        After=mnt-nas.mount
-        Requires=mnt-nas.mount
-
-        [Service]
-        Type=oneshot
-        ExecStart=/usr/local/bin/backup.sh
-
-    - name: example-backup.timer
-      enabled: true
-      contents: |
-        [Unit]
-        Description=Run example backup daily
-
-        [Timer]
-        OnCalendar=*-*-* 03:00:00
-        Persistent=true
-
-        [Install]
-        WantedBy=timers.target
+        WantedBy=remote-fs.target

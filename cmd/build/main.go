@@ -8,19 +8,35 @@ import (
 	"strings"
 )
 
-// allowedVars is the explicit set of variables that may be substituted into .bu files.
-var allowedVars = map[string]bool{
-	"SSH_PUBKEY":            true,
-	"TS_API_CLIENT_ID":      true,
-	"TS_API_CLIENT_SECRET":  true,
-	"TAILNET_DOMAIN":        true,
-	"QUADSYNC_GIT_URL":      true,
-	"QUADSYNC_GIT_BRANCH":   true,
-	"STORAGE_SMB_HOST":      true,
-	"STORAGE_SMB_SHARE":     true,
-	"STORAGE_SMB_USER":      true,
-	"STORAGE_SMB_PASSWORD":  true,
+// requiredVars must be present in site.env for every build.
+var requiredVars = map[string]bool{
+	"SSH_PUBKEY":           true,
+	"TS_API_CLIENT_ID":     true,
+	"TS_API_CLIENT_SECRET": true,
+	"TAILNET_DOMAIN":       true,
+	"QUADSYNC_GIT_URL":     true,
+	"QUADSYNC_GIT_BRANCH":  true,
 }
+
+// optionalVars may be present in site.env. They are only needed when server.bu exists.
+var optionalVars = map[string]bool{
+	"STORAGE_SMB_HOST":     true,
+	"STORAGE_SMB_SHARE":    true,
+	"STORAGE_SMB_USER":     true,
+	"STORAGE_SMB_PASSWORD": true,
+}
+
+// allowedVars is the union of required and optional variables (used by parseEnv).
+var allowedVars = func() map[string]bool {
+	m := make(map[string]bool, len(requiredVars)+len(optionalVars))
+	for k := range requiredVars {
+		m[k] = true
+	}
+	for k := range optionalVars {
+		m[k] = true
+	}
+	return m
+}()
 
 // parseEnv reads a site.env file and returns a map of KEY=VALUE pairs.
 // It rejects lines that are not simple KEY=VALUE assignments.
@@ -184,9 +200,24 @@ func run() error {
 	}
 
 	// Check all required variables are present
-	for key := range allowedVars {
+	for key := range requiredVars {
 		if _, ok := vars[key]; !ok {
 			return fmt.Errorf("site.env: missing required variable %q", key)
+		}
+	}
+
+	// Check if server.bu exists (needed for optional var warnings)
+	hasServerBu := false
+	if _, err := os.Stat("server.bu"); err == nil {
+		hasServerBu = true
+	}
+
+	// Warn about missing optional vars when server.bu exists
+	if hasServerBu {
+		for key := range optionalVars {
+			if _, ok := vars[key]; !ok {
+				fmt.Fprintf(os.Stderr, "Warning: server.bu exists but site.env is missing optional variable %q\n", key)
+			}
 		}
 	}
 

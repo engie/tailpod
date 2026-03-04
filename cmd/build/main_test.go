@@ -13,7 +13,11 @@ TS_API_CLIENT_SECRET=client-secret
 TAILNET_DOMAIN=example.ts.net
 QUADSYNC_GIT_URL=git@github.com:org/repo.git
 QUADSYNC_GIT_BRANCH=main
-STORAGE_SMB_HOST=storage.example.com
+`
+}
+
+func validEnvWithStorage() string {
+	return validEnv() + `STORAGE_SMB_HOST=storage.example.com
 STORAGE_SMB_SHARE=backup
 STORAGE_SMB_USER=user
 STORAGE_SMB_PASSWORD=password
@@ -31,8 +35,21 @@ func TestParseEnvValid(t *testing.T) {
 	if got := vars["TS_API_CLIENT_ID"]; got != "client-id" {
 		t.Errorf("TS_API_CLIENT_ID = %q", got)
 	}
+	if len(vars) != 6 {
+		t.Errorf("got %d vars, want 6", len(vars))
+	}
+}
+
+func TestParseEnvWithOptionalVars(t *testing.T) {
+	vars, err := parseEnv(validEnvWithStorage())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if len(vars) != 10 {
 		t.Errorf("got %d vars, want 10", len(vars))
+	}
+	if got := vars["STORAGE_SMB_HOST"]; got != "storage.example.com" {
+		t.Errorf("STORAGE_SMB_HOST = %q", got)
 	}
 }
 
@@ -46,17 +63,13 @@ TS_API_CLIENT_SECRET=secret
 TAILNET_DOMAIN=example.ts.net
 QUADSYNC_GIT_URL=url
 QUADSYNC_GIT_BRANCH=main
-STORAGE_SMB_HOST=host
-STORAGE_SMB_SHARE=share
-STORAGE_SMB_USER=user
-STORAGE_SMB_PASSWORD=pass
 `
 	vars, err := parseEnv(input)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(vars) != 10 {
-		t.Errorf("got %d vars, want 10", len(vars))
+	if len(vars) != 6 {
+		t.Errorf("got %d vars, want 6", len(vars))
 	}
 }
 
@@ -250,10 +263,6 @@ TS_API_CLIENT_SECRET=secret
 TAILNET_DOMAIN=example.ts.net
 QUADSYNC_GIT_URL=url
 QUADSYNC_GIT_BRANCH=main
-STORAGE_SMB_HOST=host
-STORAGE_SMB_SHARE=share
-STORAGE_SMB_USER=user
-STORAGE_SMB_PASSWORD=pass
 `
 	vars, err := parseEnv(input)
 	if err != nil {

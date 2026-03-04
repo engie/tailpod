@@ -19,14 +19,16 @@ Tailpod: infrastructure-as-code for deploying rootless Podman containers on Fedo
 ## Build Pipeline
 
 ```
-site.env ─→ envsubst ─→ butane --strict --files-dir . ─→ tailpod.ign
+site.env ─→ substitute ─→ butane --strict --files-dir . ─→ tailpod.ign
 tailpod.bu ─┘              └── deploy-key (embedded via contents.local)
+server.bu ──┘ (optional)
 ```
 
-- `build.sh` substitutes `${VAR}` placeholders in `tailpod.bu` with values from `site.env`, then transpiles to ignition
+- `build.sh` substitutes `${VAR}` placeholders in `.bu` files with values from `site.env`, then transpiles to ignition
 - The SSH deploy key is embedded via butane's `contents.local` directive (avoids multi-line env var issues)
 - Go binaries are downloaded at first boot from GitHub Releases (not embedded)
 - `site.env` and `deploy-key` are gitignored; create from `site.env.example`
+- **`server.bu`** (optional) — server-specific config (SMB storage, backup, etc.) merged into the base ignition at the JSON level. Copy `server.bu.example` to `server.bu` and fill in values. The `STORAGE_SMB_*` variables in `site.env` are only needed when `server.bu` is present.
 
 ## Related Repos
 
@@ -145,3 +147,9 @@ curl -s -o /dev/null -w "HTTP %{http_code}\n" http://$TSHOST/
 | `/etc/quadsync/deploy-key` | SSH deploy key (0600) | `deploy-key` via `contents.local` |
 | `/etc/tailscale/oauth.env` | OAuth client ID/secret (0600) | `tailpod.bu` (values from `site.env`) |
 | `/etc/sudoers.d/tailmint` | NOPASSWD for cusers group | `tailpod.bu` |
+| `/etc/quadsync/transforms/_base.container` | Storage + data volume transform | `server.bu` |
+| `/etc/quadsync/transforms/_base-data.volume` | Named volume companion | `server.bu` |
+| `/etc/quadsync/transforms/_base-litestream.container` | Litestream sidecar companion | `server.bu` |
+| `/etc/samba/storage-credentials` | SMB credentials (0600) | `server.bu` (values from `site.env`) |
+| `/usr/local/bin/storage-init` | Creates per-container dirs on SMB | `server.bu` |
+| `var-mnt-storage.mount` | SMB mount unit | `server.bu` |
