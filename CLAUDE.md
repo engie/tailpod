@@ -20,14 +20,16 @@ Tailpod: infrastructure-as-code for deploying rootless Podman containers on Fedo
 
 ```
 site.env ─→ substitute ─→ butane --strict --files-dir . ─→ tailpod.ign
-tailpod.bu ─┘              └── deploy-key (embedded via contents.local)
-server.bu ──┘ (optional)
+tailpod.bu ───┘              └── deploy-key (embedded via contents.local)
+tailscale.bu ─┘ (optional)
+server.bu ────┘ (optional)
 ```
 
 - `build.sh` substitutes `${VAR}` placeholders in `.bu` files with values from `site.env`, then transpiles to ignition
 - The SSH deploy key is embedded via butane's `contents.local` directive (avoids multi-line env var issues)
 - Go binaries are downloaded at first boot from GitHub Releases (not embedded)
 - `site.env` and `deploy-key` are gitignored; create from `site.env.example`
+- **`tailscale.bu`** — Tailscale networking config (ts4nsnet, tailmint, OAuth, tailscale transform). Committed directly since it contains only `${VAR}` placeholders. The `TS_API_*` and `TAILNET_DOMAIN` variables in `site.env` are needed for this overlay.
 - **`server.bu`** (optional) — server-specific config (SMB storage, backup, etc.) merged into the base ignition at the JSON level. Copy `server.bu.example` to `server.bu` and fill in values. The `STORAGE_SMB_*` variables in `site.env` are only needed when `server.bu` is present.
 
 ## Related Repos
@@ -143,10 +145,12 @@ curl -s -o /dev/null -w "HTTP %{http_code}\n" http://$TSHOST/
 | File | Purpose | Provisioned by |
 |------|---------|---------------|
 | `/etc/quadsync/config.env` | Git URL, branch, transform dir, group | `tailpod.bu` |
-| `/etc/quadsync/transforms/tailscale.container` | ts4nsnet merge template | `tailpod.bu` (domain from `site.env`) |
 | `/etc/quadsync/deploy-key` | SSH deploy key (0600) | `deploy-key` via `contents.local` |
-| `/etc/tailscale/oauth.env` | OAuth client ID/secret (0600) | `tailpod.bu` (values from `site.env`) |
-| `/etc/sudoers.d/tailmint` | NOPASSWD for cusers group | `tailpod.bu` |
+| `/usr/local/bin/ts4nsnet` | Tailnet networking binary | `tailscale.bu` |
+| `/usr/local/bin/tailmint` | Auth key minter binary | `tailscale.bu` |
+| `/etc/quadsync/transforms/tailscale.container` | ts4nsnet merge template | `tailscale.bu` (domain from `site.env`) |
+| `/etc/tailscale/oauth.env` | OAuth client ID/secret (0600) | `tailscale.bu` (values from `site.env`) |
+| `/etc/sudoers.d/tailmint` | NOPASSWD for cusers group | `tailscale.bu` |
 | `/etc/quadsync/transforms/_base.container` | Storage + data volume transform | `server.bu` |
 | `/etc/quadsync/transforms/_base-data.volume` | Named volume companion | `server.bu` |
 | `/etc/quadsync/transforms/_base-litestream.container` | Litestream sidecar companion | `server.bu` |

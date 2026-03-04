@@ -8,16 +8,28 @@ import (
 
 func validEnv() string {
 	return `SSH_PUBKEY="ssh-ed25519 AAAA test@example.com"
-TS_API_CLIENT_ID=client-id
-TS_API_CLIENT_SECRET=client-secret
-TAILNET_DOMAIN=example.ts.net
 QUADSYNC_GIT_URL=git@github.com:org/repo.git
 QUADSYNC_GIT_BRANCH=main
 `
 }
 
+func validEnvWithTailscale() string {
+	return validEnv() + `TS_API_CLIENT_ID=client-id
+TS_API_CLIENT_SECRET=client-secret
+TAILNET_DOMAIN=example.ts.net
+`
+}
+
 func validEnvWithStorage() string {
 	return validEnv() + `STORAGE_SMB_HOST=storage.example.com
+STORAGE_SMB_SHARE=backup
+STORAGE_SMB_USER=user
+STORAGE_SMB_PASSWORD=password
+`
+}
+
+func validEnvFull() string {
+	return validEnvWithTailscale() + `STORAGE_SMB_HOST=storage.example.com
 STORAGE_SMB_SHARE=backup
 STORAGE_SMB_USER=user
 STORAGE_SMB_PASSWORD=password
@@ -32,24 +44,44 @@ func TestParseEnvValid(t *testing.T) {
 	if got := vars["SSH_PUBKEY"]; got != "ssh-ed25519 AAAA test@example.com" {
 		t.Errorf("SSH_PUBKEY = %q, want unquoted value", got)
 	}
-	if got := vars["TS_API_CLIENT_ID"]; got != "client-id" {
-		t.Errorf("TS_API_CLIENT_ID = %q", got)
+	if len(vars) != 3 {
+		t.Errorf("got %d vars, want 3", len(vars))
+	}
+}
+
+func TestParseEnvWithTailscaleVars(t *testing.T) {
+	vars, err := parseEnv(validEnvWithTailscale())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(vars) != 6 {
 		t.Errorf("got %d vars, want 6", len(vars))
 	}
+	if got := vars["TS_API_CLIENT_ID"]; got != "client-id" {
+		t.Errorf("TS_API_CLIENT_ID = %q", got)
+	}
 }
 
-func TestParseEnvWithOptionalVars(t *testing.T) {
+func TestParseEnvWithStorageVars(t *testing.T) {
 	vars, err := parseEnv(validEnvWithStorage())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(vars) != 7 {
+		t.Errorf("got %d vars, want 7", len(vars))
+	}
+	if got := vars["STORAGE_SMB_HOST"]; got != "storage.example.com" {
+		t.Errorf("STORAGE_SMB_HOST = %q", got)
+	}
+}
+
+func TestParseEnvWithAllVars(t *testing.T) {
+	vars, err := parseEnv(validEnvFull())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(vars) != 10 {
 		t.Errorf("got %d vars, want 10", len(vars))
-	}
-	if got := vars["STORAGE_SMB_HOST"]; got != "storage.example.com" {
-		t.Errorf("STORAGE_SMB_HOST = %q", got)
 	}
 }
 
@@ -58,9 +90,6 @@ func TestParseEnvSkipsBlanksAndComments(t *testing.T) {
 
 SSH_PUBKEY=key
 # Another comment
-TS_API_CLIENT_ID=id
-TS_API_CLIENT_SECRET=secret
-TAILNET_DOMAIN=example.ts.net
 QUADSYNC_GIT_URL=url
 QUADSYNC_GIT_BRANCH=main
 `
@@ -68,8 +97,8 @@ QUADSYNC_GIT_BRANCH=main
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(vars) != 6 {
-		t.Errorf("got %d vars, want 6", len(vars))
+	if len(vars) != 3 {
+		t.Errorf("got %d vars, want 3", len(vars))
 	}
 }
 
@@ -258,9 +287,6 @@ func TestMergeIgnitionEmptyServer(t *testing.T) {
 
 func TestParseEnvStripsSingleQuotes(t *testing.T) {
 	input := `SSH_PUBKEY='ssh-ed25519 AAAA'
-TS_API_CLIENT_ID=id
-TS_API_CLIENT_SECRET=secret
-TAILNET_DOMAIN=example.ts.net
 QUADSYNC_GIT_URL=url
 QUADSYNC_GIT_BRANCH=main
 `

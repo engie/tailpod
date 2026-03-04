@@ -1,0 +1,61 @@
+variant: fcos
+version: 1.6.0
+
+storage:
+  directories:
+    - path: /etc/tailscale
+
+  files:
+    # ts4nsnet binary — tailnet networking for rootless containers
+    - path: /usr/local/bin/ts4nsnet
+      mode: 0755
+      contents:
+        source: https://github.com/engie/ts4nsnet/releases/download/v0.2/ts4nsnet-linux-arm64
+        verification:
+          hash: sha256-e980a01ae300716213793b5c436ff3b950d6693a0f4f66c85a29504335f8b267
+
+    # tailmint binary — Tailscale auth key minter
+    - path: /usr/local/bin/tailmint
+      mode: 0755
+      contents:
+        source: https://github.com/engie/tailmint/releases/download/v0.3/tailmint-linux-arm64
+        verification:
+          hash: sha256-0b4d99607ba084c9224351f7eac09e2614cd609d7cd0b93b0edc6f6e4a643ce2
+
+    # Allow managed container users to run tailmint as root (constrained args)
+    - path: /etc/sudoers.d/tailmint
+      mode: 0440
+      contents:
+        inline: |
+          %cusers ALL=(root) NOPASSWD: /usr/local/bin/tailmint -config /etc/tailscale/oauth.env -tag tag\:tailpod -hostname * -output /run/user/*/ts-authkeys/*.env
+
+    # Tailscale OAuth credentials for auth key minting
+    - path: /etc/tailscale/oauth.env
+      mode: 0600
+      contents:
+        inline: |
+          TS_API_CLIENT_ID=${TS_API_CLIENT_ID}
+          TS_API_CLIENT_SECRET=${TS_API_CLIENT_SECRET}
+
+    # Tailscale transform — merged into specs in tailscale/ directory
+    - path: /etc/quadsync/transforms/tailscale.container
+      mode: 0644
+      contents:
+        inline: |
+          [Unit]
+          After=network-online.target
+          Wants=network-online.target
+
+          [Container]
+          Network=slirp4netns
+          PodmanArgs=--network-cmd-path=/usr/local/bin/ts4nsnet --dns=100.100.100.100 --dns-search=${TAILNET_DOMAIN}
+
+          [Service]
+          +ExecStartPre=mkdir -p %t/ts-authkeys
+          +ExecStartPre=sudo /usr/local/bin/tailmint -config /etc/tailscale/oauth.env -tag tag:tailpod -hostname %N -output %t/ts-authkeys/%N.env
+          +EnvironmentFile=-%t/ts-authkeys/%N.env
+          Restart=on-failure
+          RestartSec=10s
+
+          [Install]
+          WantedBy=default.target

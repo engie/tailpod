@@ -10,30 +10,30 @@ import (
 
 // requiredVars must be present in site.env for every build.
 var requiredVars = map[string]bool{
-	"SSH_PUBKEY":           true,
-	"TS_API_CLIENT_ID":     true,
-	"TS_API_CLIENT_SECRET": true,
-	"TAILNET_DOMAIN":       true,
-	"QUADSYNC_GIT_URL":     true,
-	"QUADSYNC_GIT_BRANCH":  true,
+	"SSH_PUBKEY":       true,
+	"QUADSYNC_GIT_URL": true,
+	"QUADSYNC_GIT_BRANCH": true,
 }
 
-// optionalVars may be present in site.env. They are only needed when server.bu exists.
-var optionalVars = map[string]bool{
-	"STORAGE_SMB_HOST":     true,
-	"STORAGE_SMB_SHARE":    true,
-	"STORAGE_SMB_USER":     true,
-	"STORAGE_SMB_PASSWORD": true,
+// overlayVars maps each optional .bu file to the variables it needs.
+var overlayVars = map[string][]string{
+	"tailscale.bu": {"TS_API_CLIENT_ID", "TS_API_CLIENT_SECRET", "TAILNET_DOMAIN"},
+	"server.bu":    {"STORAGE_SMB_HOST", "STORAGE_SMB_SHARE", "STORAGE_SMB_USER", "STORAGE_SMB_PASSWORD"},
 }
 
-// allowedVars is the union of required and optional variables (used by parseEnv).
+// overlayOrder controls the order overlays are processed (for deterministic output).
+var overlayOrder = []string{"tailscale.bu", "server.bu"}
+
+// allowedVars is the union of required and overlay variables (used by parseEnv).
 var allowedVars = func() map[string]bool {
-	m := make(map[string]bool, len(requiredVars)+len(optionalVars))
+	m := make(map[string]bool)
 	for k := range requiredVars {
 		m[k] = true
 	}
-	for k := range optionalVars {
-		m[k] = true
+	for _, vars := range overlayVars {
+		for _, v := range vars {
+			m[v] = true
+		}
 	}
 	return m
 }()
@@ -206,21 +206,6 @@ func run() error {
 		}
 	}
 
-	// Check if server.bu exists (needed for optional var warnings)
-	hasServerBu := false
-	if _, err := os.Stat("server.bu"); err == nil {
-		hasServerBu = true
-	}
-
-	// Warn about missing optional vars when server.bu exists
-	if hasServerBu {
-		for key := range optionalVars {
-			if _, ok := vars[key]; !ok {
-				fmt.Fprintf(os.Stderr, "Warning: server.bu exists but site.env is missing optional variable %q\n", key)
-			}
-		}
-	}
-
 	buData, err := os.ReadFile("tailpod.bu")
 	if err != nil {
 		return fmt.Errorf("reading tailpod.bu: %w", err)
@@ -235,31 +220,46 @@ func run() error {
 	// Remove existing output so WriteFile creates fresh with 0600 permissions
 	os.Remove("tailpod.ign")
 
-	// Check for optional server.bu overlay
-	serverBu, err := os.ReadFile("server.bu")
-	if err == nil {
-		serverSubstituted := substitute(string(serverBu), vars)
-		serverIgn, err := runButane(serverSubstituted, ".")
+	// Merge optional overlays
+	var overlayNames []string
+	for _, name := range overlayOrder {
+		overlayBu, err := os.ReadFile(name)
+		if os.IsNotExist(err) {
+			continue
+		}
 		if err != nil {
-			return fmt.Errorf("processing server.bu: %w", err)
+			return fmt.Errorf("reading %s: %w", name, err)
 		}
 
-		merged, err := mergeIgnition(baseIgn, serverIgn)
-		if err != nil {
-			return err
+		// Warn about missing vars for this overlay
+		for _, key := range overlayVars[name] {
+			if _, ok := vars[key]; !ok {
+				fmt.Fprintf(os.Stderr, "Warning: %s exists but site.env is missing variable %q\n", name, key)
+			}
 		}
 
-		if err := os.WriteFile("tailpod.ign", merged, 0600); err != nil {
-			return err
+		overlaySubstituted := substitute(string(overlayBu), vars)
+		overlayIgn, err := runButane(overlaySubstituted, ".")
+		if err != nil {
+			return fmt.Errorf("processing %s: %w", name, err)
 		}
-		fmt.Println("Generated tailpod.ign (with server.bu)")
-	} else if os.IsNotExist(err) {
-		if err := os.WriteFile("tailpod.ign", baseIgn, 0600); err != nil {
-			return err
+
+		baseIgn, err = mergeIgnition(baseIgn, overlayIgn)
+		if err != nil {
+			return fmt.Errorf("merging %s: %w", name, err)
 		}
-		fmt.Println("Generated tailpod.ign")
+
+		overlayNames = append(overlayNames, name)
+	}
+
+	if err := os.WriteFile("tailpod.ign", baseIgn, 0600); err != nil {
+		return err
+	}
+
+	if len(overlayNames) > 0 {
+		fmt.Printf("Generated tailpod.ign (with %s)\n", strings.Join(overlayNames, ", "))
 	} else {
-		return fmt.Errorf("reading server.bu: %w", err)
+		fmt.Println("Generated tailpod.ign")
 	}
 
 	return nil
