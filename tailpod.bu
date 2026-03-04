@@ -45,7 +45,7 @@ storage:
 
     # quadsync config
     - path: /etc/quadsync/config.env
-      mode: 0644
+      mode: 0600
       contents:
         inline: |
           QUADSYNC_GIT_URL=${QUADSYNC_GIT_URL}

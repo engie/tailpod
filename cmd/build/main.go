@@ -201,6 +201,9 @@ func run() error {
 		return fmt.Errorf("processing tailpod.bu: %w", err)
 	}
 
+	// Remove existing output so WriteFile creates fresh with 0600 permissions
+	os.Remove("tailpod.ign")
+
 	// Check for optional server.bu overlay
 	serverBu, err := os.ReadFile("server.bu")
 	if err == nil {
@@ -215,12 +218,12 @@ func run() error {
 			return err
 		}
 
-		if err := os.WriteFile("tailpod.ign", merged, 0644); err != nil {
+		if err := os.WriteFile("tailpod.ign", merged, 0600); err != nil {
 			return err
 		}
 		fmt.Println("Generated tailpod.ign (with server.bu)")
 	} else if os.IsNotExist(err) {
-		if err := os.WriteFile("tailpod.ign", baseIgn, 0644); err != nil {
+		if err := os.WriteFile("tailpod.ign", baseIgn, 0600); err != nil {
 			return err
 		}
 		fmt.Println("Generated tailpod.ign")
