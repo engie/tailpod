@@ -7,4 +7,4 @@ server.bu
 *.raw
 *.raw.orig
 efi-variable-store
-cmd/build/build
+/tailpod

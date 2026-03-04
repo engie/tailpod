@@ -31,9 +31,9 @@ storage:
     - path: /usr/local/bin/quadsync
       mode: 0755
       contents:
-        source: https://github.com/engie/quadsync/releases/download/v0.3/quadsync-linux-arm64
+        source: https://github.com/engie/quadsync/releases/download/v0.4/quadsync-linux-arm64
         verification:
-          hash: sha256-08985d3595060915f1607b6065b7f8fe63cc9122ebd69039564676dc6bceabe1
+          hash: sha256-825be7fe0453f8a9dde589c58de0744731602e2fc905d8c0ce2d7eba539c2f4d
 
     # tailmint binary — Tailscale auth key minter
     - path: /usr/local/bin/tailmint
@@ -111,8 +111,8 @@ storage:
           [Service]
           +ExecStartPre=sudo /usr/local/bin/storage-init %N
 
-          # Volume=%N-data.volume:/data — blocked: quadlet generator doesn't
-          # resolve %N in Volume references (needs quadsync template support)
+          [Container]
+          Volume={{.Name}}-data.volume:/data
 
     # Litestream config — shared by all sidecar containers
     - path: /etc/litestream.yml
