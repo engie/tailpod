@@ -48,12 +48,13 @@ storage:
 
           [Container]
           Network=slirp4netns
-          PodmanArgs=--network-cmd-path=/usr/local/bin/ts4nsnet --dns=100.100.100.100 --dns-search=${TAILNET_DOMAIN}
+          PodmanArgs=--network-cmd-path=/usr/local/bin/ts4nsnet --pidfile %t/%N.pid --dns=100.100.100.100 --dns-search=${TAILNET_DOMAIN}
 
           [Service]
           +ExecStartPre=mkdir -p %t/ts-authkeys
           +ExecStartPre=sudo /usr/local/bin/tailmint -config /etc/tailscale/oauth.env -tag tag:tailpod -hostname %N -output %t/ts-authkeys/%N.env
           +EnvironmentFile=-%t/ts-authkeys/%N.env
+          Environment=TS_PIDFILE=%t/%N.pid
           Restart=on-failure
           RestartSec=10s
 
