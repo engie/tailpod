@@ -37,7 +37,7 @@ storage:
           TS_API_CLIENT_ID=${TS_API_CLIENT_ID}
           TS_API_CLIENT_SECRET=${TS_API_CLIENT_SECRET}
 
-    # Tailscale transform — merged into specs in tailscale/ directory
+    # Tailscale transform — merged into standalone specs in tailscale/ directory
     - path: /etc/quadsync/transforms/tailscale.container
       mode: 0644
       contents:
@@ -60,3 +60,35 @@ storage:
 
           [Install]
           WantedBy=default.target
+
+    # Tailscale pod transform — network + auth on the pod service
+    - path: /etc/quadsync/transforms/tailscale-pods.pod
+      mode: 0644
+      contents:
+        inline: |
+          [Unit]
+          After=network-online.target
+          Wants=network-online.target
+
+          [Pod]
+          Network=slirp4netns
+          PodmanArgs=--network-cmd-path=/usr/local/bin/ts4nsnet --dns=100.100.100.100 --dns-search=${TAILNET_DOMAIN}
+
+          [Service]
+          +ExecStartPre=mkdir -p %t/ts-authkeys
+          +ExecStartPre=sudo /usr/local/bin/tailmint -config /etc/tailscale/oauth.env -tag tag:tailpod -hostname %N -output %t/ts-authkeys/%N.env
+          +EnvironmentFile=-%t/ts-authkeys/%N.env
+          Environment=TS_PIDFILE=%t/%N.pid
+          Restart=on-failure
+          RestartSec=10s
+
+          [Install]
+          WantedBy=default.target
+
+    # Tailscale pod member transform — pidfile for ts4nsnet container identification
+    - path: /etc/quadsync/transforms/tailscale-pods.container
+      mode: 0644
+      contents:
+        inline: |
+          [Container]
+          PodmanArgs=--pidfile %t/%N.pid
