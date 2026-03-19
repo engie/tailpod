@@ -23,7 +23,7 @@ You push a .container file to git
 │            → mints ephemeral Tailscale auth key      │
 │          ExecStartPre: storage-init (server.bu)      │
 │            → creates per-container SMB directories   │
-│          Podman starts with ts4nsnet (tailscale.bu)   │
+│          Podman starts with netavark-tailscale-plugin (tailscale.bu)   │
 │            → enters container netns, creates TUN     │
 │            → connects to tailnet via tsnet           │
 │            → container is now reachable by hostname  │
@@ -36,10 +36,10 @@ You push a .container file to git
 |-----------|-------------|
 | **tailpod** (this repo) | [Butane](https://coreos.github.io/butane/) config that provisions the VM at first boot |
 | [quadsync](https://github.com/engie/quadsync) | Git-to-Quadlet deployer with INI transform system |
-| [ts4nsnet](https://github.com/engie/ts4nsnet) | slirp4netns replacement — bridges container traffic onto a tailnet via [tsnet](https://pkg.go.dev/tailscale.com/tsnet) |
+| [netavark-tailscale-plugin](https://github.com/engie/netavark-tailscale-plugin) | slirp4netns replacement — bridges container traffic onto a tailnet via [tsnet](https://pkg.go.dev/tailscale.com/tsnet) |
 | [tailmint](https://github.com/engie/tailmint) | Mints short-lived Tailscale auth keys from OAuth credentials |
 
-quadsync is downloaded by the base config. ts4nsnet and tailmint are added by `tailscale.bu`. All binaries are fetched at first boot from GitHub Releases with SHA256 verification. quadsync and tailmint are stdlib-only; ts4nsnet depends only on the Tailscale SDK.
+quadsync is downloaded by the base config. netavark-tailscale-plugin and tailmint are added by `tailscale.bu`. All binaries are fetched at first boot from GitHub Releases with SHA256 verification. quadsync and tailmint are stdlib-only; netavark-tailscale-plugin depends only on the Tailscale SDK.
 
 ## Quick start
 
@@ -131,7 +131,7 @@ Transforms inject host-level configuration into container specs without modifyin
 
 ### Built-in transforms
 
-**`tailscale.container`** (from `tailscale.bu`) — Adds Tailscale networking. Sets up `ts4nsnet` as the network command, configures Tailscale DNS (`100.100.100.100` + your tailnet domain as search suffix), and prepends `ExecStartPre` steps that mint a fresh ephemeral auth key via `tailmint`.
+**`tailscale.container`** (from `tailscale.bu`) — Adds Tailscale networking. Sets up `netavark-tailscale-plugin` as the network command, configures Tailscale DNS (`100.100.100.100` + your tailnet domain as search suffix), and prepends `ExecStartPre` steps that mint a fresh ephemeral auth key via `tailmint`.
 
 **`_base.container`** (from `server.bu`) — Applied to all containers. Mounts a per-container named volume at `/data` and runs `storage-init` to create the container's directory on the SMB share.
 
@@ -171,7 +171,7 @@ Optional overlays (`tailscale.bu`, `server.bu`) are each processed the same way 
 | Binary | Version | Source | Purpose |
 |--------|---------|--------|---------|
 | [quadsync](https://github.com/engie/quadsync) | v0.4 | `tailpod.bu` | Git-sync deployer with INI transforms |
-| [ts4nsnet](https://github.com/engie/ts4nsnet) | v0.2 | `tailscale.bu` | Userspace Tailscale networking for containers |
+| [netavark-tailscale-plugin](https://github.com/engie/netavark-tailscale-plugin) | v0.3 | `tailscale.bu` | Userspace Tailscale networking for containers |
 | [tailmint](https://github.com/engie/tailmint) | v0.3 | `tailscale.bu` | Ephemeral auth key minting via OAuth |
 
 ### Config files

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-Tailpod: infrastructure-as-code for deploying rootless Podman containers on Fedora CoreOS, with each container joining a Tailscale network via ts4nsnet. Container definitions live in a separate git repo and are synced to the host by `quadsync`, which applies directory-based INI transforms (e.g. Tailscale networking) before deploying.
+Tailpod: infrastructure-as-code for deploying rootless Podman containers on Fedora CoreOS, with each container joining a Tailscale network via netavark-tailscale-plugin. Container definitions live in a separate git repo and are synced to the host by `quadsync`, which applies directory-based INI transforms (e.g. Tailscale networking) before deploying.
 
 ## Build & Run
 
@@ -29,7 +29,7 @@ server.bu ────┘ (optional)
 - The SSH deploy key is embedded via butane's `contents.local` directive (avoids multi-line env var issues)
 - Go binaries are downloaded at first boot from GitHub Releases (not embedded)
 - `site.env` and `deploy-key` are gitignored; create from `site.env.example`
-- **`tailscale.bu`** — Tailscale networking config (ts4nsnet, tailmint, OAuth, tailscale transform). Committed directly since it contains only `${VAR}` placeholders. The `TS_API_*` and `TAILNET_DOMAIN` variables in `site.env` are needed for this overlay.
+- **`tailscale.bu`** — Tailscale networking config (netavark-tailscale-plugin, tailmint, OAuth, tailscale transform). Committed directly since it contains only `${VAR}` placeholders. The `TS_API_*` and `TAILNET_DOMAIN` variables in `site.env` are needed for this overlay.
 - **`server.bu`** (optional) — server-specific config (SMB storage, backup, etc.) merged into the base ignition at the JSON level. Copy `server.bu.example` to `server.bu` and fill in values. The `STORAGE_SMB_*` variables in `site.env` are only needed when `server.bu` is present.
 
 ## Related Repos
@@ -115,14 +115,14 @@ sleep 30
 
 # 4. SSH in and verify ignition provisioned correctly
 ssh -o StrictHostKeyChecking=accept-new core@77.42.39.209 '
-  ls /usr/local/bin/{quadsync,tailmint,ts4nsnet} &&
+  ls /usr/local/bin/{quadsync,tailmint,netavark-tailscale-plugin} &&
   systemctl status quadsync-sync.timer --no-pager
 '
 
 # 5. Check quadsync ran successfully (creates container users, deploys quadlets)
 ssh core@77.42.39.209 'systemctl status quadsync-sync.service --no-pager'
 
-# 6. Check container is running with ts4nsnet on the tailnet
+# 6. Check container is running with netavark-tailscale-plugin on the tailnet
 ssh core@77.42.39.209 '
   sudo systemctl --user -M nginx-demo@ status nginx-demo.service --no-pager
 '
@@ -137,7 +137,7 @@ curl -s -o /dev/null -w "HTTP %{http_code}\n" http://$TSHOST/
 - `quadsync-sync.service` exited 0 (cloned repo, created users, deployed specs)
 - `nginx-demo.service` is active (running) under the nginx-demo user
 - `tailmint` ExecStartPre exited 0 (minted auth key)
-- `ts4nsnet` is running and created a `tap0` interface with a `100.x.x.x` Tailscale IP
+- `netavark-tailscale-plugin` is running and created a `tap0` interface with a `100.x.x.x` Tailscale IP
 - nginx responds HTTP 200 over its Tailscale MagicDNS name
 
 ## Config Files on VM
@@ -146,9 +146,9 @@ curl -s -o /dev/null -w "HTTP %{http_code}\n" http://$TSHOST/
 |------|---------|---------------|
 | `/etc/quadsync/config.env` | Git URL, branch, transform dir, group | `tailpod.bu` |
 | `/etc/quadsync/deploy-key` | SSH deploy key (0600) | `deploy-key` via `contents.local` |
-| `/usr/local/bin/ts4nsnet` | Tailnet networking binary | `tailscale.bu` |
+| `/usr/local/bin/netavark-tailscale-plugin` | Tailnet networking binary | `tailscale.bu` |
 | `/usr/local/bin/tailmint` | Auth key minter binary | `tailscale.bu` |
-| `/etc/quadsync/transforms/tailscale.container` | ts4nsnet merge template | `tailscale.bu` (domain from `site.env`) |
+| `/etc/quadsync/transforms/tailscale.container` | netavark-tailscale-plugin merge template | `tailscale.bu` (domain from `site.env`) |
 | `/etc/tailscale/oauth.env` | OAuth client ID/secret (0600) | `tailscale.bu` (values from `site.env`) |
 | `/etc/sudoers.d/tailmint` | NOPASSWD for cusers group | `tailscale.bu` |
 | `/etc/quadsync/transforms/_base.container` | Storage + data volume transform | `server.bu` |

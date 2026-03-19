@@ -6,13 +6,13 @@ storage:
     - path: /etc/tailscale
 
   files:
-    # ts4nsnet binary — tailnet networking for rootless containers
-    - path: /usr/local/bin/ts4nsnet
+    # netavark-tailscale-plugin binary — tailnet networking for rootless containers
+    - path: /usr/local/bin/netavark-tailscale-plugin
       mode: 0755
       contents:
-        source: https://github.com/engie/ts4nsnet/releases/download/v0.2/ts4nsnet-linux-arm64
+        source: https://github.com/engie/netavark-tailscale-plugin/releases/download/v0.3/netavark-tailscale-plugin-linux-arm64
         verification:
-          hash: sha256-e980a01ae300716213793b5c436ff3b950d6693a0f4f66c85a29504335f8b267
+          hash: sha256-692ba448a3b3c7eb0445b895f4af59b0cb2e5cfdfb6cf4bcee7a9e2531793571
 
     # tailmint binary — Tailscale auth key minter
     - path: /usr/local/bin/tailmint
@@ -48,7 +48,7 @@ storage:
 
           [Container]
           Network=slirp4netns
-          PodmanArgs=--network-cmd-path=/usr/local/bin/ts4nsnet --pidfile %t/%N.pid --dns=100.100.100.100 --dns-search=${TAILNET_DOMAIN}
+          PodmanArgs=--network-cmd-path=/usr/local/bin/netavark-tailscale-plugin --pidfile %t/%N.pid --dns=100.100.100.100 --dns-search=${TAILNET_DOMAIN}
 
           [Service]
           +ExecStartPre=mkdir -p %t/ts-authkeys
@@ -72,7 +72,7 @@ storage:
 
           [Pod]
           Network=slirp4netns
-          PodmanArgs=--network-cmd-path=/usr/local/bin/ts4nsnet --dns=100.100.100.100 --dns-search=${TAILNET_DOMAIN}
+          PodmanArgs=--network-cmd-path=/usr/local/bin/netavark-tailscale-plugin --dns=100.100.100.100 --dns-search=${TAILNET_DOMAIN}
 
           [Service]
           +ExecStartPre=mkdir -p %t/ts-authkeys
@@ -85,7 +85,7 @@ storage:
           [Install]
           WantedBy=default.target
 
-    # Tailscale pod member transform — pidfile for ts4nsnet container identification
+    # Tailscale pod member transform — pidfile for netavark-tailscale-plugin container identification
     - path: /etc/quadsync/transforms/tailscale-pods.container
       mode: 0644
       contents:
