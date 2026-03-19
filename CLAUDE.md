@@ -115,7 +115,7 @@ sleep 30
 
 # 4. SSH in and verify ignition provisioned correctly
 ssh -o StrictHostKeyChecking=accept-new core@77.42.39.209 '
-  ls /usr/local/bin/{quadsync,tailmint,netavark-tailscale-plugin} &&
+  ls /usr/local/bin/{quadsync,tailmint} /usr/local/lib/netavark-plugins/netavark-tailscale-plugin &&
   systemctl status quadsync-sync.timer --no-pager
 '
 
@@ -146,7 +146,7 @@ curl -s -o /dev/null -w "HTTP %{http_code}\n" http://$TSHOST/
 |------|---------|---------------|
 | `/etc/quadsync/config.env` | Git URL, branch, transform dir, group | `tailpod.bu` |
 | `/etc/quadsync/deploy-key` | SSH deploy key (0600) | `deploy-key` via `contents.local` |
-| `/usr/local/bin/netavark-tailscale-plugin` | Tailnet networking binary | `tailscale.bu` |
+| `/usr/local/lib/netavark-plugins/netavark-tailscale-plugin` | Tailnet networking binary (netavark plugin) | `tailscale.bu` |
 | `/usr/local/bin/tailmint` | Auth key minter binary | `tailscale.bu` |
 | `/etc/quadsync/transforms/tailscale.container` | netavark-tailscale-plugin merge template | `tailscale.bu` (domain from `site.env`) |
 | `/etc/tailscale/oauth.env` | OAuth client ID/secret (0600) | `tailscale.bu` (values from `site.env`) |

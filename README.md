@@ -170,7 +170,7 @@ Optional overlays (`tailscale.bu`, `server.bu`) are each processed the same way 
 
 | Binary | Version | Source | Purpose |
 |--------|---------|--------|---------|
-| [quadsync](https://github.com/engie/quadsync) | v0.4 | `tailpod.bu` | Git-sync deployer with INI transforms |
+| [quadsync](https://github.com/engie/quadsync) | v0.5 | `tailpod.bu` | Git-sync deployer with INI transforms |
 | [netavark-tailscale-plugin](https://github.com/engie/netavark-tailscale-plugin) | v0.3 | `tailscale.bu` | Userspace Tailscale networking for containers |
 | [tailmint](https://github.com/engie/tailmint) | v0.3 | `tailscale.bu` | Ephemeral auth key minting via OAuth |
 
