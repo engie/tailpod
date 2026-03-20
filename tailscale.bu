@@ -31,7 +31,12 @@ storage:
         verification:
           hash: sha256-0b4d99607ba084c9224351f7eac09e2614cd609d7cd0b93b0edc6f6e4a643ce2
 
-    # Allow managed container users to run tailmint as root (constrained args)
+    # Allow managed container users to run tailmint as root (constrained args).
+    # NOTE: sudoers globs are not regexes — the wildcards below match "/" so they
+    # cannot prevent path traversal by themselves (e.g. /run/user/../../etc/shadow.env
+    # would match). tailmint itself validates the output path with strict checks:
+    # must be absolute, no "..", must match /run/user/<numeric>/ts-authkeys/<name>.env.
+    # The sudoers rule is the coarse outer fence; tailmint is the precise inner check.
     - path: /etc/sudoers.d/tailmint
       mode: 0440
       contents:
