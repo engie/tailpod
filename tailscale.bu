@@ -11,9 +11,9 @@ storage:
     - path: /usr/local/lib/netavark-plugins/netavark-tailscale-plugin
       mode: 0755
       contents:
-        source: https://github.com/engie/netavark-tailscale-plugin/releases/download/v0.3/netavark-tailscale-plugin-linux-arm64
+        source: https://github.com/engie/netavark-tailscale-plugin/releases/download/v0.4/netavark-tailscale-plugin-linux-arm64
         verification:
-          hash: sha256-692ba448a3b3c7eb0445b895f4af59b0cb2e5cfdfb6cf4bcee7a9e2531793571
+          hash: sha256-86b714f3ecdb3ac2569a6d858cfec2d03d862549183b61709eed309b6c6df11a
 
     # Tell podman/netavark where to find network plugins
     - path: /etc/containers/containers.conf
@@ -27,9 +27,9 @@ storage:
     - path: /usr/local/bin/tailmint
       mode: 0755
       contents:
-        source: https://github.com/engie/tailmint/releases/download/v0.3/tailmint-linux-arm64
+        source: https://github.com/engie/tailmint/releases/download/v0.4/tailmint-linux-arm64
         verification:
-          hash: sha256-0b4d99607ba084c9224351f7eac09e2614cd609d7cd0b93b0edc6f6e4a643ce2
+          hash: sha256-28ab8d22fa268028f40ee0ab29314b166e79a918b1d8ba255a5a30a4af9c6b8f
 
     # Allow managed container users to run tailmint as root (constrained args).
     # NOTE: sudoers globs are not regexes — the wildcards below match "/" so they
