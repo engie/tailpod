@@ -7,7 +7,7 @@ storage:
     - path: /var/mnt/storage
 
   files:
-    # Base transform — applied to all containers (storage + data volume)
+    # Base transform — applied to all containers (storage + volumes)
     - path: /etc/quadsync/transforms/_base.container
       mode: 0644
       contents:
@@ -21,6 +21,7 @@ storage:
 
           [Container]
           Volume={{.Name}}-data.volume:/data
+          Volume=/var/mnt/storage/{{.Name}}/blobs:/blobs
 
     # Base pod transform — applied to all .pod files
     - path: /etc/quadsync/transforms/_base.pod
@@ -88,7 +89,7 @@ storage:
             echo "storage-init: invalid container name: $NAME" >&2
             exit 1
           fi
-          mkdir -p "/var/mnt/storage/$NAME/db_backup"
+          mkdir -p "/var/mnt/storage/$NAME/db_backup" "/var/mnt/storage/$NAME/blobs"
           # CIFS mount does not support POSIX ownership; chown is a no-op
 
     # Allow managed container users to run storage-init as root
