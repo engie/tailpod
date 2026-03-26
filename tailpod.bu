@@ -42,6 +42,18 @@ storage:
       contents:
         local: deploy_key
 
+    # Base transform — applied to all containers (restart + autostart)
+    - path: /etc/quadsync/transforms/_base.container
+      mode: 0644
+      contents:
+        inline: |
+          [Service]
+          Restart=on-failure
+          RestartSec=10s
+
+          [Install]
+          WantedBy=default.target
+
 systemd:
   units:
     # Sync container definitions from git

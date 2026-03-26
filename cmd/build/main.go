@@ -1,8 +1,13 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -21,7 +26,10 @@ var overlayVars = map[string][]string{
 	"server.bu":    {"STORAGE_SMB_HOST", "STORAGE_SMB_SHARE", "STORAGE_SMB_USER", "STORAGE_SMB_PASSWORD"},
 }
 
-// overlayOrder controls the order overlays are processed (for deterministic output).
+// overlayOrder controls the order overlays are merged into the base ignition.
+// When multiple overlays write to the same file path, their inline contents
+// are concatenated (see mergeFileContents). This allows each overlay to
+// contribute sections to shared files like _base.container.
 var overlayOrder = []string{"tailscale.bu", "server.bu"}
 
 // allowedVars is the union of required and overlay variables (used by parseEnv).
@@ -134,6 +142,129 @@ func mergeArrayField(b, s map[string]any, section, field string) {
 	}
 	bArr, _ := bSection[field].([]any)
 	bSection[field] = append(bArr, sArr...)
+}
+
+// mergeFileContents concatenates inline file contents for storage.files entries
+// that share the same path. When two overlays both write to the same path, their
+// contents are appended (with a newline separator) rather than last-writer-wins.
+// This allows tailpod.bu and server.bu to each contribute sections to a shared
+// transform file like _base.container.
+func mergeFileContents(b map[string]any) {
+	storage, ok := b["storage"].(map[string]any)
+	if !ok {
+		return
+	}
+	files, ok := storage["files"].([]any)
+	if !ok {
+		return
+	}
+
+	seen := make(map[string]int) // path -> index in deduped
+	var deduped []any
+	for _, item := range files {
+		m, ok := item.(map[string]any)
+		if !ok {
+			deduped = append(deduped, item)
+			continue
+		}
+		path, _ := m["path"].(string)
+		if path == "" {
+			deduped = append(deduped, item)
+			continue
+		}
+		idx, exists := seen[path]
+		if !exists {
+			seen[path] = len(deduped)
+			deduped = append(deduped, item)
+			continue
+		}
+		// Same path — concatenate contents
+		existing := deduped[idx].(map[string]any)
+		merged, err := concatDataURI(existing, m)
+		if err != nil {
+			// Can't merge (e.g. remote URL source) — last writer wins
+			deduped[idx] = item
+			continue
+		}
+		deduped[idx] = merged
+	}
+	storage["files"] = deduped
+}
+
+// concatDataURI concatenates the inline contents of two ignition file entries.
+// Returns the first entry with the combined content.
+func concatDataURI(a, b map[string]any) (map[string]any, error) {
+	aText, err := decodeDataURI(a)
+	if err != nil {
+		return nil, err
+	}
+	bText, err := decodeDataURI(b)
+	if err != nil {
+		return nil, err
+	}
+	// Ensure newline between concatenated sections
+	if !strings.HasSuffix(aText, "\n") {
+		aText += "\n"
+	}
+	combined := aText + bText
+	// Re-encode as plain data: URI (drop any compression from the originals)
+	result := make(map[string]any)
+	for k, v := range a {
+		result[k] = v
+	}
+	result["contents"] = map[string]any{
+		"source": "data:," + url.PathEscape(combined),
+	}
+	return result, nil
+}
+
+// decodeDataURI extracts the text content from an ignition file entry.
+// Handles both plain data: URIs and gzip+base64 compressed ones.
+func decodeDataURI(entry map[string]any) (string, error) {
+	contents, ok := entry["contents"].(map[string]any)
+	if !ok {
+		return "", fmt.Errorf("no contents")
+	}
+	source, ok := contents["source"].(string)
+	if !ok {
+		return "", fmt.Errorf("no source")
+	}
+	compression, _ := contents["compression"].(string)
+
+	if !strings.HasPrefix(source, "data:") {
+		return "", fmt.Errorf("not a data: URI")
+	}
+
+	switch {
+	case compression == "" && strings.HasPrefix(source, "data:,"):
+		// Plain URL-encoded: data:,content
+		decoded, err := url.PathUnescape(strings.TrimPrefix(source, "data:,"))
+		if err != nil {
+			return "", err
+		}
+		return decoded, nil
+
+	case compression == "gzip" && strings.HasPrefix(source, "data:;base64,"):
+		// Gzip+base64: data:;base64,<base64-gzip>
+		b64 := strings.TrimPrefix(source, "data:;base64,")
+		compressed, err := base64.StdEncoding.DecodeString(b64)
+		if err != nil {
+			return "", err
+		}
+		gz, err := gzip.NewReader(bytes.NewReader(compressed))
+		if err != nil {
+			return "", err
+		}
+		defer gz.Close()
+		data, err := io.ReadAll(gz)
+		if err != nil {
+			return "", err
+		}
+		return string(data), nil
+
+	default:
+		return "", fmt.Errorf("unsupported data URI format")
+	}
 }
 
 // mergeGroupByName concatenates arrays from b and s, then groups by "name" field.
@@ -250,6 +381,19 @@ func run() error {
 		}
 
 		overlayNames = append(overlayNames, name)
+	}
+
+	// Merge same-path files by concatenating their inline contents.
+	// This allows multiple .bu files to contribute sections to a shared file
+	// (e.g. _base.container gets lifecycle from tailpod.bu and storage from server.bu).
+	var merged map[string]any
+	if err := json.Unmarshal(baseIgn, &merged); err != nil {
+		return fmt.Errorf("parsing merged ignition: %w", err)
+	}
+	mergeFileContents(merged)
+	baseIgn, err = json.MarshalIndent(merged, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encoding merged ignition: %w", err)
 	}
 
 	if err := os.WriteFile("tailpod.ign", baseIgn, 0600); err != nil {

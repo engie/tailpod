@@ -7,7 +7,8 @@ storage:
     - path: /var/mnt/storage
 
   files:
-    # Base transform — applied to all containers (storage + volumes)
+    # Base transform — storage additions (appended to _base.container from tailpod.bu)
+    # The build tool concatenates same-path file contents across overlays.
     - path: /etc/quadsync/transforms/_base.container
       mode: 0644
       contents:
