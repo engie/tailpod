@@ -1,0 +1,11 @@
+variant: fcos
+version: 1.6.0
+
+storage:
+  files:
+    # Registry auth for pulling from authenticated container stores (e.g. ghcr.io)
+    - path: /etc/containers/auth.json
+      mode: 0644
+      contents:
+        inline: |
+          {"auths":{"ghcr.io":{"auth":"${REGISTRY_AUTH_B64}"}}}
