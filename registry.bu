@@ -9,3 +9,10 @@ storage:
       contents:
         inline: |
           {"auths":{"ghcr.io":{"auth":"${REGISTRY_AUTH_B64}"}}}
+
+    # Tell podman (including rootless) to use the system-wide auth file
+    - path: /etc/environment.d/registry.conf
+      mode: 0644
+      contents:
+        inline: |
+          REGISTRY_AUTH_FILE=/etc/containers/auth.json
