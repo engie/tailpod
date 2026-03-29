@@ -316,6 +316,24 @@ func mergeGroupByName(b, s map[string]any, section, field string) {
 	bSection[field] = result
 }
 
+// gitBuildInfo returns the current git commit (short hash) with a dirty suffix
+// if the working tree has uncommitted changes.
+func gitBuildInfo() (string, error) {
+	out, err := exec.Command("git", "rev-parse", "--short", "HEAD").Output()
+	if err != nil {
+		return "", err
+	}
+	commit := strings.TrimSpace(string(out))
+	status, err := exec.Command("git", "status", "--porcelain").Output()
+	if err != nil {
+		return commit, nil
+	}
+	if len(strings.TrimSpace(string(status))) > 0 {
+		commit += "-dirty"
+	}
+	return commit, nil
+}
+
 func run() error {
 	envData, err := os.ReadFile("site.env")
 	if err != nil {
@@ -336,6 +354,13 @@ func run() error {
 		if _, ok := vars[key]; !ok {
 			return fmt.Errorf("site.env: missing required variable %q", key)
 		}
+	}
+
+	// Inject build-time variables from git
+	if commit, err := gitBuildInfo(); err == nil {
+		vars["TAILPOD_BUILD"] = commit
+	} else {
+		vars["TAILPOD_BUILD"] = "unknown"
 	}
 
 	buData, err := os.ReadFile("tailpod.bu")

@@ -14,6 +14,7 @@ storage:
     - path: /etc/quadsync
     - path: /etc/quadsync/transforms
     - path: /var/lib/quadsync
+    - path: /etc/tailpod
 
   files:
     # quadsync binary — git-sync + transform merge deployer
@@ -35,6 +36,12 @@ storage:
           QUADSYNC_STATE_DIR=/var/lib/quadsync
           QUADSYNC_USER_GROUP=cusers
           QUADSYNC_SSH_KEY=/etc/quadsync/deploy-key
+
+    # Build provenance — which tailpod commit produced this ignition config
+    - path: /etc/tailpod/build
+      mode: 0644
+      contents:
+        inline: ${TAILPOD_BUILD}
 
     # SSH deploy key for container-defs git repo
     - path: /etc/quadsync/deploy-key
