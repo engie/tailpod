@@ -21,8 +21,8 @@ storage:
           +ExecStartPre=sudo /usr/local/bin/storage-init %N
 
           [Container]
-          Volume={{.Name}}-data.volume:/data
-          Volume=/var/mnt/storage/{{.Name}}/blobs:/blobs
+          +Volume={{.Name}}-data.volume:/data
+          +Volume=/var/mnt/storage/{{.Name}}/blobs:/blobs
 
     # Base pod transform — applied to all .pod files
     - path: /etc/quadsync/transforms/_base.pod
