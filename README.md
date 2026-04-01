@@ -133,14 +133,14 @@ Transforms inject host-level configuration into container specs without modifyin
 
 **`tailscale.container`** (from `tailscale.bu`) — Adds Tailscale networking. Sets up `netavark-tailscale-plugin` as the network command, configures Tailscale DNS (`100.100.100.100` + your tailnet domain as search suffix), and prepends `ExecStartPre` steps that mint a fresh ephemeral auth key via `tailmint`.
 
-**`_base.container`** (from `server.bu`) — Applied to all containers. Mounts a per-container named volume at `/data` and runs `storage-init` to create the container's directory on the SMB share.
+**`_base.container`** (from `server.bu`) — Applied to all containers. Mounts a per-container named volume at `/data`, runs `storage-init` to create the container's directory on the SMB share, and requires the matching Litestream sidecar before the app starts when one is present.
 
 ### Companion templates
 
 Transforms can include companion files. The `_base` transform (from `server.bu`) ships with:
 
 - **`_base-data.volume`** — A named Podman volume for each container, mounted at `/data`.
-- **`_base-litestream.container`** — An optional Litestream sidecar that replicates `/data/db.sqlite` to the SMB share. Deployed automatically if the container definitions repo includes a matching file.
+- **`_base-litestream.container`** — An optional Litestream sidecar that overrides the image entrypoint to run a shell, restores `/data/db.sqlite` from backup if the volume is empty, then starts replication to the SMB share. Deployed automatically if the container definitions repo includes a matching file.
 
 ## Persistent storage (server.bu)
 
@@ -149,7 +149,7 @@ When `server.bu` is present, tailpod mounts an SMB share at `/var/mnt/storage`. 
 - A **named Podman volume** (`<name>-data`) mounted at `/data` inside the container
 - A **directory on the SMB share** (`/var/mnt/storage/<name>/db_backup`) for off-host backups
 
-The Litestream sidecar, if enabled, continuously replicates SQLite databases from the volume to the SMB backup directory.
+The Litestream sidecar, if enabled, first attempts an idempotent restore of `/data/db.sqlite` from the SMB-backed replica and then continuously replicates SQLite changes back to the SMB backup directory. App containers require the sidecar and start only after its unit reaches `active`, so restore must complete and `replicate` must be running when the sidecar exists.
 
 ## Build pipeline
 

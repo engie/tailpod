@@ -16,6 +16,8 @@ storage:
           [Unit]
           After=var-mnt-storage.mount
           Requires=var-mnt-storage.mount
+          Requires={{.Name}}-litestream.service
+          After={{.Name}}-litestream.service
 
           [Service]
           +ExecStartPre=sudo /usr/local/bin/storage-init %N
@@ -49,7 +51,8 @@ storage:
 
           [Container]
           Image=docker.io/litestream/litestream:latest
-          Exec=replicate
+          Entrypoint=sh
+          Exec=-ec 'litestream restore -if-db-not-exists -if-replica-exists /data/db.sqlite && exec litestream replicate'
           Volume={{.Name}}-data.volume:/data
           Volume=/var/mnt/storage/{{.Name}}/db_backup:/backup
           Volume=/etc/litestream.yml:/etc/litestream.yml:ro
