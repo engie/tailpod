@@ -8,3 +8,4 @@ server.bu
 *.raw.orig
 efi-variable-store
 /tailpod
+.codex
