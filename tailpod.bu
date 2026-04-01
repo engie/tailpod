@@ -21,9 +21,9 @@ storage:
     - path: /usr/local/bin/quadsync
       mode: 0755
       contents:
-        source: https://github.com/engie/quadsync/releases/download/v0.6/quadsync-linux-arm64
+        source: https://github.com/engie/quadsync/releases/download/v0.7/quadsync-linux-arm64
         verification:
-          hash: sha256-346689b33dec1d30e01cb717916057148aa4ecdad812a4e58e47a89a48c61021
+          hash: sha256-3964f834a0596478799caa36643fa756af5006a5299240a787b9d49e613f282a
 
     # quadsync config
     - path: /etc/quadsync/config.env
@@ -36,12 +36,19 @@ storage:
           QUADSYNC_STATE_DIR=/var/lib/quadsync
           QUADSYNC_USER_GROUP=cusers
           QUADSYNC_SSH_KEY=/etc/quadsync/deploy-key
+          QUADSYNC_AGE_KEY=/etc/quadsync/age.key
 
     # Build provenance — which tailpod commit produced this ignition config
     - path: /etc/tailpod/build
       mode: 0644
       contents:
         inline: ${TAILPOD_BUILD}
+
+    # Age private key for SOPS-encrypted secrets decryption
+    - path: /etc/quadsync/age.key
+      mode: 0600
+      contents:
+        inline: ${QUADSYNC_AGE_KEY}
 
     # SSH deploy key for container-defs git repo
     - path: /etc/quadsync/deploy-key

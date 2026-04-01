@@ -33,7 +33,10 @@ var overlayVars = map[string][]string{
 // contribute sections to shared files like _base.container.
 var overlayOrder = []string{"tailscale.bu", "registry.bu", "server.bu"}
 
-// allowedVars is the union of required and overlay variables (used by parseEnv).
+// optionalBaseVars are substituted into tailpod.bu but not required.
+var optionalBaseVars = []string{"QUADSYNC_AGE_KEY"}
+
+// allowedVars is the union of required, overlay, and optional base variables (used by parseEnv).
 var allowedVars = func() map[string]bool {
 	m := make(map[string]bool)
 	for k := range requiredVars {
@@ -43,6 +46,9 @@ var allowedVars = func() map[string]bool {
 		for _, v := range vars {
 			m[v] = true
 		}
+	}
+	for _, v := range optionalBaseVars {
+		m[v] = true
 	}
 	return m
 }()
