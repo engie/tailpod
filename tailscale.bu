@@ -63,16 +63,19 @@ storage:
           [Container]
           Network=tailscale
           PodmanArgs=--pidfile %t/%N.pid --dns-search=${TAILNET_DOMAIN}
+          Volume=%t/tailscale-certs/%N:/etc/tls:ro
 
           [Service]
           +ExecStartPre=mkdir -p %t/ts-authkeys
           +ExecStartPre=mkdir -p %S/tailscale-state
+          +ExecStartPre=mkdir -p %t/tailscale-certs/%N
           +ExecStartPre=sudo /usr/local/bin/tailmint -config /etc/tailscale/oauth.env -tag tag:tailpod -hostname %N -output %t/ts-authkeys/%N.env
           +ExecStartPre=podman network create --ignore --driver netavark-tailscale-plugin tailscale
           +EnvironmentFile=-%t/ts-authkeys/%N.env
           +Environment=TS_HOSTNAME=%N
           +Environment=TS_PIDFILE=%t/%N.pid
           +Environment=TS_STATE_DIR=%S/tailscale-state
+          +Environment=TS_TLS_CERTS_DIR=%t/tailscale-certs/%N
           Restart=on-failure
           RestartSec=10s
 
@@ -94,12 +97,14 @@ storage:
           [Service]
           +ExecStartPre=mkdir -p %t/ts-authkeys
           +ExecStartPre=mkdir -p %S/tailscale-state
+          +ExecStartPre=mkdir -p %t/tailscale-certs/%N
           +ExecStartPre=sudo /usr/local/bin/tailmint -config /etc/tailscale/oauth.env -tag tag:tailpod -hostname %N -output %t/ts-authkeys/%N.env
           +ExecStartPre=podman network create --ignore --driver netavark-tailscale-plugin tailscale
           +EnvironmentFile=-%t/ts-authkeys/%N.env
           +Environment=TS_HOSTNAME=%N
           +Environment=TS_PIDFILE=%t/%N.pid
           +Environment=TS_STATE_DIR=%S/tailscale-state
+          +Environment=TS_TLS_CERTS_DIR=%t/tailscale-certs/%N
           Restart=on-failure
           RestartSec=10s
 
