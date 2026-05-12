@@ -11,9 +11,9 @@ storage:
     - path: /usr/local/lib/netavark-plugins/netavark-tailscale-plugin
       mode: 0755
       contents:
-        source: https://github.com/engie/netavark-tailscale-plugin/releases/download/v0.6/netavark-tailscale-plugin-linux-arm64
+        source: https://github.com/engie/netavark-tailscale-plugin/releases/download/v0.8/netavark-tailscale-plugin-linux-arm64
         verification:
-          hash: sha256-7435b0e8395ac15d45fe1c35a30c14fe1f367456daf52590e7382ec0f138c708
+          hash: sha256-fe9b9290de094406e510141e0351da90ef756b73b6e0adbf44d26bf561616be7
 
     # Tell podman/netavark where to find network plugins
     - path: /etc/containers/containers.conf
