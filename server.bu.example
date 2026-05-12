@@ -103,7 +103,7 @@ storage:
             echo "storage-init: invalid container name: $NAME" >&2
             exit 1
           fi
-          mkdir -p "/var/mnt/storage/$NAME/db_backup" "/var/mnt/storage/$NAME/blobs"
+          mkdir -p "/var/mnt/storage/$NAME/db_backup" "/var/mnt/storage/$NAME/blobs" "/var/mnt/storage/$NAME/certs"
           # CIFS mount does not support POSIX ownership; chown is a no-op
 
     # Allow managed container users to run storage-init as root
