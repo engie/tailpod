@@ -11,9 +11,9 @@ storage:
     - path: /usr/local/lib/netavark-plugins/netavark-tailscale-plugin
       mode: 0755
       contents:
-        source: https://github.com/engie/netavark-tailscale-plugin/releases/download/v0.9/netavark-tailscale-plugin-linux-arm64
+        source: https://github.com/engie/netavark-tailscale-plugin/releases/download/v0.10/netavark-tailscale-plugin-linux-arm64
         verification:
-          hash: sha256-2c4dd73153152b231f76231c9d7271ad54e3a1d77fff351abbbc8173f40dfbe4
+          hash: sha256-91c50704ede27c89b5db8af707f34a71f08ac95e9ce7a57f468b68198763e522
 
     # Tell podman/netavark where to find network plugins
     - path: /etc/containers/containers.conf
@@ -62,7 +62,7 @@ storage:
 
           [Container]
           Network=tailscale
-          PodmanArgs=--pidfile %t/%N.pid --dns-search=${TAILNET_DOMAIN}
+          PodmanArgs=--dns-search=${TAILNET_DOMAIN}
           Volume=%t/tailscale-certs/%N:/etc/tls:ro
 
           [Service]
@@ -73,7 +73,6 @@ storage:
           +ExecStartPre=podman network create --ignore --driver netavark-tailscale-plugin tailscale
           +EnvironmentFile=-%t/ts-authkeys/%N.env
           +Environment=TS_HOSTNAME=%N
-          +Environment=TS_PIDFILE=%t/%N.pid
           +Environment=TS_STATE_DIR=%S/tailscale-state
           +Environment=TS_TLS_CERTS_DIR=%t/tailscale-certs/%N
           Restart=on-failure
@@ -102,7 +101,6 @@ storage:
           +ExecStartPre=podman network create --ignore --driver netavark-tailscale-plugin tailscale
           +EnvironmentFile=-%t/ts-authkeys/%N.env
           +Environment=TS_HOSTNAME=%N
-          +Environment=TS_PIDFILE=%t/%N.pid
           +Environment=TS_STATE_DIR=%S/tailscale-state
           +Environment=TS_TLS_CERTS_DIR=%t/tailscale-certs/%N
           Restart=on-failure
@@ -110,11 +108,3 @@ storage:
 
           [Install]
           WantedBy=default.target
-
-    # Tailscale pod member transform — pidfile for netavark-tailscale-plugin container identification
-    - path: /etc/quadsync/transforms/tailscale-pods.container
-      mode: 0644
-      contents:
-        inline: |
-          [Container]
-          PodmanArgs=--pidfile %t/%N.pid
