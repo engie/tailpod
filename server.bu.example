@@ -40,7 +40,11 @@ storage:
         inline: |
           [Volume]
 
-    # Litestream sidecar companion template — replicates SQLite to SMB
+    # Litestream sidecar companion template — replicates SQLite to SMB.
+    # The litestream image is now scratch-based (no shell), so restore and
+    # replicate run as separate steps: restore as ExecStartPre via a one-shot
+    # podman run, then the main container runs replicate via the image's
+    # default litestream entrypoint.
     - path: /etc/quadsync/transforms/_base-litestream.container
       mode: 0644
       contents:
@@ -51,14 +55,20 @@ storage:
 
           [Container]
           Image=docker.io/litestream/litestream:latest
-          Entrypoint=sh
-          Exec=-ec 'litestream restore -if-db-not-exists -if-replica-exists /data/db.sqlite && exec litestream replicate'
+          Exec=replicate
           Volume={{.Name}}-data.volume:/data
           Volume=/var/mnt/storage/{{.Name}}/db_backup:/backup
           Volume=/etc/litestream.yml:/etc/litestream.yml:ro
 
           [Service]
           ExecStartPre=sudo /usr/local/bin/storage-init {{.Name}}
+          ExecStartPre=/usr/bin/podman volume create --ignore systemd-{{.Name}}-data
+          ExecStartPre=/usr/bin/podman run --rm \
+            --volume systemd-{{.Name}}-data:/data \
+            --volume /var/mnt/storage/{{.Name}}/db_backup:/backup \
+            --volume /etc/litestream.yml:/etc/litestream.yml:ro \
+            docker.io/litestream/litestream:latest \
+            restore -if-db-not-exists -if-replica-exists /data/db.sqlite
           Restart=always
           RestartSec=10s
 
