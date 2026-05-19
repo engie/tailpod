@@ -22,16 +22,17 @@ var requiredVars = map[string]bool{
 
 // overlayVars maps each optional .bu file to the variables it needs.
 var overlayVars = map[string][]string{
-	"tailscale.bu": {"TS_API_CLIENT_ID", "TS_API_CLIENT_SECRET", "TAILNET_DOMAIN"},
-	"registry.bu":  {"REGISTRY_AUTH_B64"},
-	"server.bu":    {"STORAGE_SMB_HOST", "STORAGE_SMB_SHARE", "STORAGE_SMB_USER", "STORAGE_SMB_PASSWORD"},
+	"tailscale.bu":      {"TS_API_CLIENT_ID", "TS_API_CLIENT_SECRET", "TAILNET_DOMAIN"},
+	"host-tailscale.bu": {"TS_HOST_API_CLIENT_ID", "TS_HOST_API_CLIENT_SECRET", "TS_HOST_HOSTNAME"},
+	"registry.bu":       {"REGISTRY_AUTH_B64"},
+	"server.bu":         {"STORAGE_SMB_HOST", "STORAGE_SMB_SHARE", "STORAGE_SMB_USER", "STORAGE_SMB_PASSWORD"},
 }
 
 // overlayOrder controls the order overlays are merged into the base ignition.
 // When multiple overlays write to the same file path, their inline contents
 // are concatenated (see mergeFileContents). This allows each overlay to
 // contribute sections to shared files like _base.container.
-var overlayOrder = []string{"tailscale.bu", "registry.bu", "server.bu"}
+var overlayOrder = []string{"tailscale.bu", "host-tailscale.bu", "registry.bu", "server.bu"}
 
 // optionalBaseVars are substituted into tailpod.bu but not required.
 var optionalBaseVars = []string{"QUADSYNC_AGE_KEY"}

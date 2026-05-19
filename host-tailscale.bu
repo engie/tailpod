@@ -1,0 +1,127 @@
+variant: fcos
+version: 1.6.0
+
+storage:
+  directories:
+    # Persistent state for host tailscaled (separate from containers' tsnet state)
+    - path: /var/lib/tailscale
+      mode: 0700
+    # Holding directory for the downloaded tarball before extraction
+    - path: /var/lib/tailscale-install
+      mode: 0755
+
+  files:
+    # Tailscale static binary tarball — fetched + hash-verified by ignition.
+    # The host-tailscale-install.service one-shot extracts tailscale + tailscaled
+    # into /usr/local/{bin,sbin} on first boot, then removes the tarball.
+    - path: /var/lib/tailscale-install/tailscale.tgz
+      mode: 0644
+      contents:
+        source: https://pkgs.tailscale.com/stable/tailscale_1.98.2_arm64.tgz
+        verification:
+          hash: sha256-6f56441fedd4309fb949e8f257d7bd93bc157191968918b906a781fc25029ad4
+
+    # Host-side OAuth credentials — a SEPARATE OAuth client from tailmint's.
+    # Tailscale's OAuth model requires that all tags listed in an
+    # auth_keys-write scope be present on every minted key. tailmint's client
+    # is scoped to tag:tailpod; this client is scoped to tag:host. They can't
+    # share a client without forcing every node into the union of both tags.
+    # The OAuth client secret embeds its own client ID (tskey-client-<id>-<secret>),
+    # so the daemon accepts it directly as --auth-key.
+    - path: /etc/tailscale/host-oauth.env
+      mode: 0600
+      contents:
+        inline: |
+          TS_AUTH_SECRET=${TS_HOST_API_CLIENT_SECRET}
+          TS_HOST_HOSTNAME=${TS_HOST_HOSTNAME}
+
+    # One-shot up script — runs once at first boot, marks completion so
+    # subsequent restarts don't re-call the Tailscale API. Delete the marker
+    # to force re-auth (e.g. after rotating the OAuth client).
+    - path: /usr/local/sbin/tailscale-up
+      mode: 0755
+      contents:
+        inline: |
+          #!/bin/bash
+          set -euo pipefail
+          source /etc/tailscale/host-oauth.env
+          /usr/local/bin/tailscale up \
+            --auth-key="${TS_AUTH_SECRET}?preauthorized=true&ephemeral=false" \
+            --advertise-tags=tag:host \
+            --hostname="${TS_HOST_HOSTNAME}" \
+            --ssh \
+            --accept-dns=false
+          touch /var/lib/tailscale/.up-done
+
+systemd:
+  units:
+    # Extract the tailscale tarball into /usr/local on first boot.
+    # ConditionPathExists guards against re-extraction on subsequent boots.
+    - name: host-tailscale-install.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Install tailscale static binaries
+        ConditionPathExists=!/usr/local/sbin/tailscaled
+        After=network-online.target
+        Before=tailscaled.service
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=yes
+        ExecStart=/usr/bin/tar -xzf /var/lib/tailscale-install/tailscale.tgz -C /var/lib/tailscale-install --strip-components=1
+        ExecStart=/usr/bin/install -m 0755 /var/lib/tailscale-install/tailscale  /usr/local/bin/tailscale
+        ExecStart=/usr/bin/install -m 0755 /var/lib/tailscale-install/tailscaled /usr/local/sbin/tailscaled
+        ExecStart=/usr/bin/rm -rf /var/lib/tailscale-install
+
+        [Install]
+        WantedBy=multi-user.target
+
+    # tailscaled daemon — runs as root, manages /var/lib/tailscale state.
+    # Port 41641 is the default Tailscale WireGuard port.
+    - name: tailscaled.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Tailscale node agent
+        Documentation=https://tailscale.com/kb/
+        Wants=network-pre.target
+        After=network-pre.target NetworkManager.service systemd-resolved.service
+        After=host-tailscale-install.service
+        Requires=host-tailscale-install.service
+
+        [Service]
+        ExecStartPre=/usr/local/sbin/tailscaled --cleanup
+        ExecStart=/usr/local/sbin/tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/run/tailscale/tailscaled.sock --port=41641
+        ExecStopPost=/usr/local/sbin/tailscaled --cleanup
+        Restart=on-failure
+        RestartSec=5s
+        RuntimeDirectory=tailscale
+        RuntimeDirectoryMode=0755
+        StateDirectory=tailscale
+        StateDirectoryMode=0700
+        CacheDirectory=tailscale
+        CacheDirectoryMode=0750
+        Type=notify
+
+        [Install]
+        WantedBy=multi-user.target
+
+    # One-shot tailscale up — runs once, registers the node, enables SSH.
+    - name: tailscale-up.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Register host on the tailnet (one-shot)
+        After=tailscaled.service network-online.target
+        Wants=network-online.target
+        Requires=tailscaled.service
+        ConditionPathExists=!/var/lib/tailscale/.up-done
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=yes
+        ExecStart=/usr/local/sbin/tailscale-up
+
+        [Install]
+        WantedBy=multi-user.target
