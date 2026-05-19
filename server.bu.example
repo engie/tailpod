@@ -56,6 +56,12 @@ storage:
           [Container]
           Image=docker.io/litestream/litestream:latest
           Exec=replicate
+          # Litestream's hardened image runs as USER nonroot (uid 65532), which
+          # in rootless podman maps outside the per-tenant user's id range and
+          # cannot create WAL/shm files in the shared /data volume (SQLite
+          # errors with SQLITE_READONLY_DIRECTORY, code 1544). Run as in-userns
+          # root so we share an identity with the app container's default user.
+          User=0:0
           Volume={{.Name}}-data.volume:/data
           Volume=/var/mnt/storage/{{.Name}}/db_backup:/backup
           Volume=/etc/litestream.yml:/etc/litestream.yml:ro
