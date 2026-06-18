@@ -32,6 +32,9 @@ storage:
     # share a client without forcing every node into the union of both tags.
     # The OAuth client secret embeds its own client ID (tskey-client-<id>-<secret>),
     # so the daemon accepts it directly as --auth-key.
+    # Required OAuth scopes:
+    #   - auth_keys (tag:host)  : mint the up token
+    #   - devices:core          : delete stale nodes pre-flight (avoids -N hostname suffix)
     - path: /etc/tailscale/host-oauth.env
       mode: 0600
       contents:
@@ -39,23 +42,18 @@ storage:
           TS_AUTH_SECRET=${TS_HOST_API_CLIENT_SECRET}
           TS_HOST_HOSTNAME=${TS_HOST_HOSTNAME}
 
-    # One-shot up script — runs once at first boot, marks completion so
-    # subsequent restarts don't re-call the Tailscale API. Delete the marker
-    # to force re-auth (e.g. after rotating the OAuth client).
+    # Up script (registers the host, pre-flight deletes stale devices to avoid
+    # -N hostname suffixing). See scripts/tailscale-up for details.
     - path: /usr/local/sbin/tailscale-up
       mode: 0755
       contents:
-        inline: |
-          #!/bin/bash
-          set -euo pipefail
-          source /etc/tailscale/host-oauth.env
-          /usr/local/bin/tailscale up \
-            --auth-key="${TS_AUTH_SECRET}?preauthorized=true&ephemeral=false" \
-            --advertise-tags=tag:host \
-            --hostname="${TS_HOST_HOSTNAME}" \
-            --ssh \
-            --accept-dns=false
-          touch /var/lib/tailscale/.up-done
+        local: scripts/tailscale-up
+
+    # Recovery script (wipe state + re-register), invoked by the watchdog.
+    - path: /usr/local/sbin/tailscale-recover
+      mode: 0755
+      contents:
+        local: scripts/tailscale-recover
 
 systemd:
   units:
@@ -129,3 +127,30 @@ systemd:
 
         [Install]
         WantedBy=multi-user.target
+
+    # Watchdog: detect when the node has been deleted from the tailnet
+    # (tailscaled loops on "PollNetMap: initial fetch failed 404: node not
+    # found") and trigger recovery. Triggered by the timer below.
+    - name: host-tailscale-watchdog.service
+      contents: |
+        [Unit]
+        Description=Detect and recover from a deleted tailnet node
+        After=tailscaled.service
+        Requires=tailscaled.service
+
+        [Service]
+        Type=oneshot
+        ExecStart=/bin/bash -c 'if journalctl -u tailscaled --since "6 minutes ago" | grep -q "node not found"; then /usr/local/sbin/tailscale-recover; fi'
+
+    - name: host-tailscale-watchdog.timer
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Periodic check for deleted tailnet node
+
+        [Timer]
+        OnBootSec=5min
+        OnUnitActiveSec=5min
+
+        [Install]
+        WantedBy=timers.target

@@ -1,0 +1,49 @@
+#!/bin/bash
+# Registers the host on the tailnet. Run once at first boot by
+# tailscale-up.service (gated on /var/lib/tailscale/.up-done), and re-run
+# by tailscale-recover when the watchdog detects a deleted node.
+#
+# Pre-flight: delete any stale tailnet devices that already claim our
+# desired hostname. Without this, Tailscale silently uniquifies us as
+# "<hostname>-1", "<hostname>-2", etc. Failure to reach the API is
+# non-fatal — we'd rather come up with a suffix than not come up.
+set -euo pipefail
+source /etc/tailscale/host-oauth.env
+
+# The OAuth secret works directly as --auth-key for tailscaled (which does
+# its own internal exchange), but raw devices API calls require an explicit
+# client_credentials exchange first.
+echo "tailscale-up: pre-flight: exchanging OAuth secret for access token"
+if token=$(curl -fsSL --max-time 15 \
+    -d "grant_type=client_credentials" \
+    -u "${TS_AUTH_SECRET}:" \
+    https://api.tailscale.com/api/v2/oauth/token \
+    | jq -r '.access_token // empty') && [ -n "$token" ]; then
+  echo "tailscale-up: searching for stale devices with hostname=${TS_HOST_HOSTNAME}"
+  if devices=$(curl -fsSL --max-time 15 \
+      -H "Authorization: Bearer ${token}" \
+      https://api.tailscale.com/api/v2/tailnet/-/devices); then
+    echo "$devices" | jq -r --arg h "$TS_HOST_HOSTNAME" \
+        '.devices[] | select(.hostname == $h) | .nodeId' \
+      | while read -r id; do
+          [ -n "$id" ] || continue
+          echo "tailscale-up: deleting stale device $id"
+          curl -fsSL --max-time 15 -X DELETE \
+            -H "Authorization: Bearer ${token}" \
+            "https://api.tailscale.com/api/v2/device/$id" \
+            || echo "tailscale-up: WARNING: failed to delete $id"
+        done
+  else
+    echo "tailscale-up: WARNING: device listing failed; may end up with -N suffix"
+  fi
+else
+  echo "tailscale-up: WARNING: OAuth token exchange failed; skipping pre-flight"
+fi
+
+/usr/local/bin/tailscale up \
+  --auth-key="${TS_AUTH_SECRET}?preauthorized=true&ephemeral=false" \
+  --advertise-tags=tag:host \
+  --hostname="${TS_HOST_HOSTNAME}" \
+  --ssh \
+  --accept-dns=false
+touch /var/lib/tailscale/.up-done

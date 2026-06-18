@@ -1,0 +1,9 @@
+#!/bin/bash
+# Wipe local tailscaled state and re-run tailscale-up.service. Invoked by
+# host-tailscale-watchdog.service when tailscaled is stuck on a deleted
+# node key (PollNetMap 404 loop).
+set -euo pipefail
+echo "tailscale-recover: wiping state and re-registering host"
+rm -f /var/lib/tailscale/.up-done /var/lib/tailscale/tailscaled.state
+systemctl restart tailscaled.service
+systemctl start tailscale-up.service
