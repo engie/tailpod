@@ -174,6 +174,65 @@ storage:
         inline: |
           %cusers ALL=(root) NOPASSWD: /usr/local/bin/storage-init [a-z][a-z0-9_-]*
 
+    # restic repository + credentials for blob backups to Cloudflare R2 (S3).
+    # Reuses the R2 access key/secret; RESTIC_PASSWORD is a separate client-side
+    # encryption key (restic encrypts before upload). 0600 root — only the
+    # host-level blobs-backup timer reads it.
+    - path: /etc/restic-blobs.env
+      mode: 0600
+      contents:
+        inline: |
+          RESTIC_REPOSITORY=s3:${OBJECT_ENDPOINT}/${OBJECT_BUCKET_NAME}/blobs-restic
+          RESTIC_PASSWORD=${BLOBS_RESTIC_PASSWORD}
+          AWS_ACCESS_KEY_ID=${OBJECT_KEY}
+          AWS_SECRET_ACCESS_KEY=${OBJECT_SECRET}
+
+    # Blob backup driver — runs restic in a container (host network → host DNS,
+    # so no pod-netns DNS issues). `backup` snapshots every container's blobs
+    # dir; `prune` applies the retention policy. No envsubst ${VAR} patterns
+    # appear here (the build tool would otherwise try to substitute them).
+    - path: /usr/local/bin/blobs-backup
+      mode: 0755
+      contents:
+        inline: |
+          #!/bin/bash
+          set -euo pipefail
+          IMAGE=docker.io/restic/restic:0.17.3
+          ENVFILE=/etc/restic-blobs.env
+          restic() {
+            podman run --rm --env-file "$ENVFILE" \
+              --volume /var/mnt/storage:/data:ro \
+              "$IMAGE" "$@"
+          }
+          case "${1:-backup}" in
+            backup)
+              # Initialise the repo on first run (idempotent).
+              if ! restic cat config >/dev/null 2>&1; then
+                echo "blobs-backup: initialising restic repo"
+                restic init
+              fi
+              # One path per container blobs dir, mapped to the container mount.
+              mapfile -t paths < <(for d in /var/mnt/storage/*/blobs; do
+                [ -d "$d" ] || continue
+                echo "/data/$(basename "$(dirname "$d")")/blobs"
+              done)
+              if [ "${#paths[@]}" -eq 0 ]; then
+                echo "blobs-backup: no blobs directories found"
+                exit 0
+              fi
+              echo "blobs-backup: backing up ${#paths[@]} blobs dir(s)"
+              restic backup --host tailpod --tag blobs "${paths[@]}"
+              ;;
+            prune)
+              restic forget --tag blobs --host tailpod \
+                --keep-hourly 24 --keep-daily 7 --keep-weekly 4 --prune
+              ;;
+            *)
+              echo "usage: blobs-backup [backup|prune]" >&2
+              exit 1
+              ;;
+          esac
+
 systemd:
   units:
     # Mount the attached block volume (ext4) at /var/mnt/storage. The volume is
@@ -201,3 +260,56 @@ systemd:
 
         [Install]
         WantedBy=local-fs.target
+
+    # Blob backup to R2 (restic), every 15 minutes.
+    - name: blobs-backup.service
+      contents: |
+        [Unit]
+        Description=Back up container blobs to R2 (restic)
+        After=var-mnt-storage.mount network-online.target
+        Requires=var-mnt-storage.mount
+        Wants=network-online.target
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/local/bin/blobs-backup backup
+
+    - name: blobs-backup.timer
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Back up container blobs to R2 every 15 minutes
+
+        [Timer]
+        OnBootSec=10min
+        OnUnitActiveSec=15min
+        Persistent=true
+
+        [Install]
+        WantedBy=timers.target
+
+    # Retention/prune for the restic blob repo, daily.
+    - name: blobs-prune.service
+      contents: |
+        [Unit]
+        Description=Prune old restic blob snapshots
+        After=var-mnt-storage.mount network-online.target
+        Wants=network-online.target
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/local/bin/blobs-backup prune
+
+    - name: blobs-prune.timer
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Prune old restic blob snapshots daily
+
+        [Timer]
+        OnCalendar=daily
+        Persistent=true
+        RandomizedDelaySec=30min
+
+        [Install]
+        WantedBy=timers.target

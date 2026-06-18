@@ -25,7 +25,7 @@ var overlayVars = map[string][]string{
 	"tailscale.bu":      {"TS_API_CLIENT_ID", "TS_API_CLIENT_SECRET", "TAILNET_DOMAIN"},
 	"host-tailscale.bu": {"TS_HOST_API_CLIENT_ID", "TS_HOST_API_CLIENT_SECRET", "TS_HOST_HOSTNAME"},
 	"registry.bu":       {"REGISTRY_AUTH_B64"},
-	"server.bu":         {"STORAGE_VOLUME_DEVICE", "OBJECT_BUCKET", "OBJECT_KEY", "OBJECT_SECRET"},
+	"server.bu":         {"STORAGE_VOLUME_DEVICE", "OBJECT_BUCKET", "OBJECT_KEY", "OBJECT_SECRET", "BLOBS_RESTIC_PASSWORD"},
 }
 
 // overlayOrder controls the order overlays are merged into the base ignition.
