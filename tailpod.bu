@@ -21,9 +21,9 @@ storage:
     - path: /usr/local/bin/quadsync
       mode: 0755
       contents:
-        source: https://github.com/engie/quadsync/releases/download/v0.9/quadsync-linux-arm64
+        source: https://github.com/engie/quadsync/releases/download/v0.10/quadsync-linux-arm64
         verification:
-          hash: sha256-e5743e940098694fd8bcc61acf8e49e5570f737a0bc978f280870a77124e77d1
+          hash: sha256-fa5c9274689f691dcfdd9d838c1173b5084625a997439dd3ba14f33e9f4e33ae
 
     # quadsync config
     - path: /etc/quadsync/config.env
