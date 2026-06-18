@@ -25,7 +25,7 @@ var overlayVars = map[string][]string{
 	"tailscale.bu":      {"TS_API_CLIENT_ID", "TS_API_CLIENT_SECRET", "TAILNET_DOMAIN"},
 	"host-tailscale.bu": {"TS_HOST_API_CLIENT_ID", "TS_HOST_API_CLIENT_SECRET", "TS_HOST_HOSTNAME"},
 	"registry.bu":       {"REGISTRY_AUTH_B64"},
-	"server.bu":         {"STORAGE_SMB_HOST", "STORAGE_SMB_SHARE", "STORAGE_SMB_USER", "STORAGE_SMB_PASSWORD"},
+	"server.bu":         {"STORAGE_VOLUME_DEVICE", "OBJECT_BUCKET", "OBJECT_KEY", "OBJECT_SECRET"},
 }
 
 // overlayOrder controls the order overlays are merged into the base ignition.
@@ -361,6 +361,18 @@ func run() error {
 		if _, ok := vars[key]; !ok {
 			return fmt.Errorf("site.env: missing required variable %q", key)
 		}
+	}
+
+	// Derive the litestream S3 endpoint and bucket name from OBJECT_BUCKET,
+	// which is a full https://<account>.r2.cloudflarestorage.com/<bucket> URL.
+	// Litestream needs the endpoint (host) and bucket name as separate fields.
+	if bucketURL, ok := vars["OBJECT_BUCKET"]; ok && bucketURL != "" {
+		u, err := url.Parse(bucketURL)
+		if err != nil {
+			return fmt.Errorf("OBJECT_BUCKET %q: %w", bucketURL, err)
+		}
+		vars["OBJECT_ENDPOINT"] = u.Scheme + "://" + u.Host
+		vars["OBJECT_BUCKET_NAME"] = strings.Trim(u.Path, "/")
 	}
 
 	// Inject build-time variables from git

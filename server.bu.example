@@ -3,12 +3,32 @@ version: 1.6.0
 
 storage:
   directories:
-    - path: /etc/samba
     - path: /var/mnt/storage
 
   files:
+    # Constrain zincati's auto-updates to a weekly window so a freshly-imaged
+    # host doesn't immediately chain-reboot through pending ostree updates and
+    # interrupt the first quadsync run. The cost is OS updates lag up to a
+    # week; refresh the FCOS snapshot periodically to keep that lag bounded.
+    - path: /etc/zincati/config.d/55-periodic-updates.toml
+      mode: 0644
+      contents:
+        inline: |
+          [updates]
+          strategy = "periodic"
+
+          [[updates.periodic.window]]
+          days = ["Sat"]
+          start_time = "02:00"
+          length_minutes = 240
+
     # Base transform — storage additions (appended to _base.container from tailpod.bu)
     # The build tool concatenates same-path file contents across overlays.
+    # Both /data (live SQLite) and /blobs live on the attached block volume
+    # mounted at /var/mnt/storage. SELinux is handled by a mount-wide context=
+    # (see the mount unit below), so the bind mounts deliberately use no :z/:Z
+    # relabel flag — per-file relabel (lsetxattr) fails for pod members, whose
+    # root-owned dirs can't be relabelled by the rootless pod user.
     - path: /etc/quadsync/transforms/_base.container
       mode: 0644
       contents:
@@ -23,7 +43,7 @@ storage:
           +ExecStartPre=sudo /usr/local/bin/storage-init %N
 
           [Container]
-          +Volume={{.Name}}-data.volume:/data
+          +Volume=/var/mnt/storage/{{.Name}}/data:/data
           +Volume=/var/mnt/storage/{{.Name}}/blobs:/blobs
 
     # Base pod transform — applied to all .pod files
@@ -33,22 +53,19 @@ storage:
         inline: |
           [Pod]
 
-    # Named volume companion template — local storage for SQLite
-    - path: /etc/quadsync/transforms/_base-data.volume
-      mode: 0644
-      contents:
-        inline: |
-          [Volume]
-
-    # Litestream sidecar companion template — replicates SQLite to SMB.
-    # The litestream image is now scratch-based (no shell), so restore and
-    # replicate run as separate steps: restore as ExecStartPre via a one-shot
-    # podman run, then the main container runs replicate via the image's
-    # default litestream entrypoint.
+    # Litestream sidecar companion template — replicates the live SQLite db on
+    # the block volume to a Cloudflare R2 (S3) bucket. The litestream image is
+    # scratch-based (no shell), so restore and replicate run as separate steps:
+    # restore as ExecStartPre via a one-shot podman run, then the main container
+    # runs replicate via the image's default litestream entrypoint.
     - path: /etc/quadsync/transforms/_base-litestream.container
       mode: 0644
       contents:
         inline: |
+          # quadsync:no-pod — litestream backs up to S3/R2 over the public
+          # internet, so it must keep default networking (host DNS). Without
+          # this, pod members' sidecars inherit the pod's tailnet netns and
+          # MagicDNS can't resolve the S3 endpoint.
           [Unit]
           After=var-mnt-storage.mount
           Requires=var-mnt-storage.mount
@@ -62,17 +79,18 @@ storage:
           # errors with SQLITE_READONLY_DIRECTORY, code 1544). Run as in-userns
           # root so we share an identity with the app container's default user.
           User=0:0
-          Volume={{.Name}}-data.volume:/data
-          Volume=/var/mnt/storage/{{.Name}}/db_backup:/backup
+          Volume=/var/mnt/storage/{{.Name}}/data:/data
           Volume=/etc/litestream.yml:/etc/litestream.yml:ro
+          EnvironmentFile=/etc/litestream.env
+          Environment=LITESTREAM_PATH={{.Name}}
 
           [Service]
           ExecStartPre=sudo /usr/local/bin/storage-init {{.Name}}
-          ExecStartPre=/usr/bin/podman volume create --ignore systemd-{{.Name}}-data
           ExecStartPre=/usr/bin/podman run --rm \
-            --volume systemd-{{.Name}}-data:/data \
-            --volume /var/mnt/storage/{{.Name}}/db_backup:/backup \
+            --volume /var/mnt/storage/{{.Name}}/data:/data \
             --volume /etc/litestream.yml:/etc/litestream.yml:ro \
+            --env-file /etc/litestream.env \
+            --env LITESTREAM_PATH={{.Name}} \
             docker.io/litestream/litestream:latest \
             restore -if-db-not-exists -if-replica-exists /data/db.sqlite
           Restart=always
@@ -81,7 +99,10 @@ storage:
           [Install]
           WantedBy=default.target
 
-    # Litestream config — shared by all sidecar containers
+    # Litestream config — shared by all sidecar containers. Site-specific S3
+    # endpoint, bucket and credentials come from /etc/litestream.env; the
+    # per-container replica path comes from LITESTREAM_PATH. Litestream expands
+    # ${VAR} references in this file from its environment at runtime.
     - path: /etc/litestream.yml
       mode: 0644
       contents:
@@ -89,11 +110,33 @@ storage:
           dbs:
             - path: /data/db.sqlite
               replicas:
-                - type: file
-                  path: /backup
+                - type: s3
+                  endpoint: ${LITESTREAM_ENDPOINT}
+                  bucket: ${LITESTREAM_BUCKET}
+                  path: ${LITESTREAM_PATH}
+                  region: auto
+                  force-path-style: true
 
-    # Storage init script — creates per-container dirs on SMB mount
-    # Note: no shell variables — envsubst runs over this file.
+    # Litestream S3 (Cloudflare R2) credentials + endpoint, shared by all
+    # sidecars. Readable by container users (cusers group) so rootless podman
+    # can pass it via --env-file. LITESTREAM_ACCESS_KEY_ID/SECRET_ACCESS_KEY are
+    # litestream's recognised credential env vars.
+    - path: /etc/litestream.env
+      mode: 0640
+      user:
+        name: root
+      group:
+        name: cusers
+      contents:
+        inline: |
+          LITESTREAM_ACCESS_KEY_ID=${OBJECT_KEY}
+          LITESTREAM_SECRET_ACCESS_KEY=${OBJECT_SECRET}
+          LITESTREAM_ENDPOINT=${OBJECT_ENDPOINT}
+          LITESTREAM_BUCKET=${OBJECT_BUCKET_NAME}
+
+    # Storage init script — creates per-container dirs on the block volume.
+    # Note: no shell variables consumed by envsubst — the build tool only
+    # substitutes ${VAR} for allowlisted keys, and none appear here.
     - path: /usr/local/bin/storage-init
       mode: 0755
       contents:
@@ -109,8 +152,19 @@ storage:
             echo "storage-init: invalid container name: $NAME" >&2
             exit 1
           fi
-          mkdir -p "/var/mnt/storage/$NAME/db_backup" "/var/mnt/storage/$NAME/blobs" "/var/mnt/storage/$NAME/certs"
-          # CIFS mount does not support POSIX ownership; chown is a no-op
+          base="/var/mnt/storage/$NAME"
+          mkdir -p "$base/data" "$base/blobs" "$base/certs"
+          # ext4 supports POSIX ownership. For a standalone container the Linux
+          # user is named after the container, and the container's in-userns
+          # root maps to that user's uid — so chown the tree to the user and
+          # rootless podman can read/write the bind mounts. Pod members share
+          # the pod's user (no user matches the member name); fall back to
+          # world-writable dirs so the shared user can still create files.
+          if id "$NAME" >/dev/null 2>&1; then
+            chown -R "$NAME:$NAME" "$base"
+          else
+            chmod 0777 "$base/data" "$base/blobs" "$base/certs"
+          fi
 
     # Allow managed container users to run storage-init as root
     # Sudoers glob: [a-z] prefix + alphanumeric/hyphen/underscore only
@@ -120,34 +174,30 @@ storage:
         inline: |
           %cusers ALL=(root) NOPASSWD: /usr/local/bin/storage-init [a-z][a-z0-9_-]*
 
-    # SMB credentials for storage mount
-    - path: /etc/samba/storage-credentials
-      mode: 0600
-      contents:
-        inline: |
-          username=${STORAGE_SMB_USER}
-          password=${STORAGE_SMB_PASSWORD}
-
 systemd:
   units:
-    # Mount SMB storage share
+    # Mount the attached block volume (ext4) at /var/mnt/storage. The volume is
+    # provisioned/formatted out of band and persists across host reimages, so
+    # ignition only mounts it here — it never formats it.
     - name: var-mnt-storage.mount
       enabled: true
       contents: |
         [Unit]
-        Description=Mount SMB storage share
-        After=network-online.target
-        Wants=network-online.target
+        Description=Mount block storage volume
+        After=local-fs-pre.target
+        Before=local-fs.target
 
         [Mount]
-        What=//${STORAGE_SMB_HOST}/${STORAGE_SMB_SHARE}
+        What=${STORAGE_VOLUME_DEVICE}
         Where=/var/mnt/storage
-        Type=cifs
-        # context= labels the CIFS mount container_file_t so confined containers
-        # (container_t) can read/write it. CIFS has no per-file SELinux xattrs, so
-        # :z/:Z relabeling is impossible and a mount-wide context is the only fix.
-        # Without it, litestream/app containers get EACCES (denials are dontaudit'd).
-        Options=vers=3.0,credentials=/etc/samba/storage-credentials,uid=0,gid=0,dir_mode=0777,file_mode=0666,context=system_u:object_r:container_file_t:s0
+        Type=ext4
+        # context= applies one SELinux label to the whole mount so confined
+        # containers (container_t) can access bind mounts without a per-file
+        # :z/:Z relabel. Per-file relabel (lsetxattr) fails for pod members
+        # whose root-owned dirs can't be relabelled by the rootless pod user,
+        # so we label mount-wide instead. DAC ownership is still handled by
+        # storage-init (chown for standalone containers, 0777 for pod members).
+        Options=defaults,nofail,x-systemd.device-timeout=30s,context=system_u:object_r:container_file_t:s0
 
         [Install]
-        WantedBy=remote-fs.target
+        WantedBy=local-fs.target

@@ -21,18 +21,18 @@ TAILNET_DOMAIN=example.ts.net
 }
 
 func validEnvWithStorage() string {
-	return validEnv() + `STORAGE_SMB_HOST=storage.example.com
-STORAGE_SMB_SHARE=backup
-STORAGE_SMB_USER=user
-STORAGE_SMB_PASSWORD=password
+	return validEnv() + `STORAGE_VOLUME_DEVICE=/dev/disk/by-id/scsi-0HC_Volume_123
+OBJECT_BUCKET=https://acct.r2.cloudflarestorage.com/bucket
+OBJECT_KEY=access-key
+OBJECT_SECRET=secret-key
 `
 }
 
 func validEnvFull() string {
-	return validEnvWithTailscale() + `STORAGE_SMB_HOST=storage.example.com
-STORAGE_SMB_SHARE=backup
-STORAGE_SMB_USER=user
-STORAGE_SMB_PASSWORD=password
+	return validEnvWithTailscale() + `STORAGE_VOLUME_DEVICE=/dev/disk/by-id/scsi-0HC_Volume_123
+OBJECT_BUCKET=https://acct.r2.cloudflarestorage.com/bucket
+OBJECT_KEY=access-key
+OBJECT_SECRET=secret-key
 `
 }
 
@@ -70,8 +70,8 @@ func TestParseEnvWithStorageVars(t *testing.T) {
 	if len(vars) != 7 {
 		t.Errorf("got %d vars, want 7", len(vars))
 	}
-	if got := vars["STORAGE_SMB_HOST"]; got != "storage.example.com" {
-		t.Errorf("STORAGE_SMB_HOST = %q", got)
+	if got := vars["OBJECT_BUCKET"]; got != "https://acct.r2.cloudflarestorage.com/bucket" {
+		t.Errorf("OBJECT_BUCKET = %q", got)
 	}
 }
 
