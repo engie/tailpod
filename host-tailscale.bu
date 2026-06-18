@@ -18,8 +18,12 @@ storage:
       mode: 0644
       contents:
         source: https://pkgs.tailscale.com/stable/tailscale_1.98.2_arm64.tgz
+        # Tailscale periodically re-rolls the stable tarball for a given version,
+        # which changes the bytes/hash while keeping the version string. A stale
+        # hash makes Ignition abort first boot (emergency mode, no sshd). Re-pinned
+        # 2026-06-18 to the then-current artifact (verified: valid 1.98.2 package).
         verification:
-          hash: sha256-6f56441fedd4309fb949e8f257d7bd93bc157191968918b906a781fc25029ad4
+          hash: sha256-2941071f5b33d2c3be4072853a765d2d0252fee8589b298e54ca4d36fbe82094
 
     # Host-side OAuth credentials — a SEPARATE OAuth client from tailmint's.
     # Tailscale's OAuth model requires that all tags listed in an

@@ -143,7 +143,11 @@ systemd:
         What=//${STORAGE_SMB_HOST}/${STORAGE_SMB_SHARE}
         Where=/var/mnt/storage
         Type=cifs
-        Options=vers=3.0,credentials=/etc/samba/storage-credentials,uid=0,gid=0,dir_mode=0777,file_mode=0666
+        # context= labels the CIFS mount container_file_t so confined containers
+        # (container_t) can read/write it. CIFS has no per-file SELinux xattrs, so
+        # :z/:Z relabeling is impossible and a mount-wide context is the only fix.
+        # Without it, litestream/app containers get EACCES (denials are dontaudit'd).
+        Options=vers=3.0,credentials=/etc/samba/storage-credentials,uid=0,gid=0,dir_mode=0777,file_mode=0666,context=system_u:object_r:container_file_t:s0
 
         [Install]
         WantedBy=remote-fs.target
