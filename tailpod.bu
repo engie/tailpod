@@ -96,3 +96,25 @@ systemd:
 
         [Install]
         WantedBy=timers.target
+
+    # Privileged control-socket daemon: status + lifecycle control for managed
+    # containers. Listens on /run/quadsync/control.sock (root:cusers 0660); the
+    # unprivileged quadstat web container connects to it. RuntimeDirectoryMode
+    # 0755 lets the cusers-mapped container user traverse to the socket.
+    - name: quadsync-serve.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=quadsync control socket daemon
+        After=systemd-logind.service
+
+        [Service]
+        Type=simple
+        RuntimeDirectory=quadsync
+        RuntimeDirectoryMode=0755
+        ExecStart=/usr/local/bin/quadsync serve
+        Restart=on-failure
+        RestartSec=5s
+
+        [Install]
+        WantedBy=multi-user.target
